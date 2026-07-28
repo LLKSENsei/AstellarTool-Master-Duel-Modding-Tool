@@ -1,0 +1,21 @@
+__pycache__/
+*.py[cod]
+*$py.class
+
+# MD_AstellarTool 產生的暫存與個人設定
+md_tool_config.json
+MD_Tool_Temp/
+symlink_state.json
+*.bak
+*.decrypted
+
+# 打包與虛擬環境
+build/
+dist/
+*.spec
+venv/
+.venv/
+
+# IDE 設定檔
+.vscode/
+.idea/
