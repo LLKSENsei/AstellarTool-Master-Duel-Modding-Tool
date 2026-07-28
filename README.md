@@ -88,3 +88,24 @@ Yu-Gi-Oh! Master Duel Asset &amp; Modding Tool with PySide6
 * **13. 設定與外觀**：集中管理工具的全域環境變數與外觀。支援自訂五維度調色盤 (動態套用 QSS)、更換背景圖片與九宮格對齊錨點、調整多進程算力上限，以及匯出 AST 解析的翻譯樣板。
 
 ---
+
+### 目錄結構說明
+* `MD_AstellarTool.py`：主程式進入點與介面邏輯。
+* `requirements.txt`：Python 依賴庫清單。
+* `MD_Tool_Essential/`：靜態資源目錄。
+  * `Languages/`：存放透過 AST 匯出與使用者自訂的多語系 JSON 檔案。
+  * `CardFrame/`：存放用於超框渲染的 PSD 模板與降級使用的 PNG 備用圖檔。
+
+---
+
+## 特別致謝
+
+開源專案的建立與完善，離不開社群前輩的無私分享與研究。在此特別感謝以下貢獻者與社群：
+
+* **TranLinhVy**：特別感謝 NexusMods 創作者 [TranLinhVy](https://www.nexusmods.com/profile/TranLinhVy) 的優秀作品與技術啟發，對本專案的發展有極大的幫助。
+* **Master Duel 解包與 Mod 社群**：致敬所有曾經為《Yu-Gi-Oh! Master Duel》資產拆解、資料庫分析以及工具開發做出貢獻的研究者們。有你們在底層技術上的鑽研與無私分享，才有 MD AstellarTool 的誕生。
+
+### 開發者資訊
+* 作者 Pixiv：[LonelyMaJo](https://www.pixiv.net/users/126514098)
+ 
+---
