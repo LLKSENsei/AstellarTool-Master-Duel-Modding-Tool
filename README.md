@@ -1,6 +1,4 @@
-# AstellarTool-Master-Duel-Modding-Tool
-Yu-Gi-Oh! Master Duel Asset &amp; Modding Tool with PySide6
-# MD AstellarTool (MD 阿斯特婭工具箱)
+[繁體中文](README.md) | [English](README_en.md)
 
 [![License](https://img.shields.io/github/license/LLKSENsei/AstellarTool-Master-Duel-Modding-Tool?color=2CC985)](LICENSE)
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)]()
@@ -8,14 +6,15 @@ Yu-Gi-Oh! Master Duel Asset &amp; Modding Tool with PySide6
 [![Price](https://img.shields.io/badge/Price-100%25%20Free-brightgreen)]()
 
 一款專為《遊戲王 Master Duel》開發的自動化資產解析、圖檔替換、超框卡圖 (Over-Frame Art) 渲染，以及虛擬模組管理工具。本專案基於 Python 3、PySide6 與 UnityPy 構建，致力於解決遊戲資產修改過程中的繁瑣步驟與底層檔案結構問題。
+# MD AstellarTool (MD 阿斯特婭工具箱)
 
 ---
 
-## 📖 詳細使用教學 (Tutorial)
+## 詳細使用教學 (Tutorial)
 
 由於本工具功能豐富（包含 14 個獨立工作管線），為了提供更清晰的圖文說明，請參考獨立的教學文件：
 
-👉 **[點擊這裡查看完整圖文教學 (TUTORIAL.md)](TUTORIAL.md)**
+**[點擊這裡查看完整教學 (TUTORIAL.md)](TUTORIAL.md)**
 
 教學內容包含：
 * 如何從 0 到 1 完成一次完整的卡圖替換
