@@ -16,6 +16,8 @@
 
 **[點擊這裡查看完整教學 (TUTORIAL.md)](TUTORIAL.md)**
 
+[影片](https://youtu.be/DJUt6wblYLw)
+
 教學內容包含：
 * 如何從 0 到 1 完成一次完整的卡圖替換
 * 靈擺與超框卡圖 (Over-Frame) 的處理技巧

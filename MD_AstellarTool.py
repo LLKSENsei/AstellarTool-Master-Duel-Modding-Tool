@@ -1,3 +1,27 @@
+"""
+================================================================================
+MD AstellarTool (MD 阿斯特婭工具箱)
+================================================================================
+An open-source GUI tool for Yu-Gi-Oh! Master Duel asset analysis, modification, 
+over-frame rendering, and virtual mod management.
+
+Author: LonelyMaJo (https://www.pixiv.net/users/126514098)
+License: MIT License
+
+[ 免費與防詐騙聲明 / Free Tool & Refund Disclaimer ]
+1. 本程式為完全免費且開源之工具，僅供技術交流與個人研究使用。
+2. 本程式嚴禁任何形式的商業轉售、打包販售或變相收費。
+3. 若您是付費才取得本程式，您已被詐騙！請立即向賣家或平台申請退款並檢舉該商家。
+   (This tool is 100% FREE and Open Source. If you paid for this software, 
+    you have been scammed! Please request a refund immediately.)
+================================================================================
+"""
+
+__author__ = "LonelyMaJo"
+__license__ = "MIT"
+__version__ = "1.0.0"
+__url__ = "https://www.pixiv.net/users/126514098"
+
 import os
 import sys
 import csv
@@ -849,14 +873,18 @@ class MDEngine:
         if not filepath or not os.path.exists(filepath): return False
         if not MDEngine.is_unity_bundle(filepath): return False
         try:
-            env = UnityPy.load(filepath)
+            # 💡 從硬碟讀入記憶體，離開 with 區塊的瞬間徹底釋放檔案鎖！
+            with open(filepath, "rb") as f:
+                file_data = f.read()
+            env = UnityPy.load(file_data)
             for obj in env.objects:
                 if obj.type.name == "TextAsset":
                     data = obj.read()
                     name = getattr(data, "m_Name", getattr(data, "name", ""))
                     if str(name) == "of_card_asset":
                         return True
-        except Exception: pass
+        except Exception: 
+            pass
         return False
 
     @staticmethod
@@ -1093,7 +1121,7 @@ class MDEngine:
 
         # 2. 收集搜尋路徑
         raw_files = []
-        for root, _dirs, files in os.walk(target_dir):
+        for root, dummy_dirs, files in os.walk(target_dir):
             for file in files:
                 raw_files.append((os.path.join(root, file), file))
 
@@ -1139,6 +1167,8 @@ class MDEngine:
                             with open(os.path.join(MDEngine.TEMP_DIR, f"{key_name}.decrypted"), "wb") as bf: bf.write(dec_bytes)
                             break
             except Exception: pass
+            finally:
+                if env: del env # 加上這行
             
         return MDEngine.build_db_from_assets(found_text_assets, target_dir, parse_meta)
 
@@ -1286,8 +1316,10 @@ class MDEngine:
                                 extracted.add(clean_name)
                                 if opts['gen_csv']: mapping.append([folder_type, container_type, file_name, clean_name])
                             except Exception: pass
-                del env
             except Exception: pass
+            finally:
+                if 'env' in locals() and env:
+                    del env
             
         return extracted, mapping, processed_count
 
@@ -1356,12 +1388,16 @@ class MDEngine:
                         success_count += 1
                     except Exception as e:
                         try:
-                            if exp_img and 'base_id' in locals():
-                                with open(os.path.join(out_img_dir, f"ERROR_{base_id}.txt"), "w", encoding="utf-8") as ef:
-                                    ef.write(f"{_('解碼圖片發生錯誤 (Error decoding image)')} {base_id}:\n{str(e)}")
-                        except: pass
-            del env
+                            # 🛡️ 修正：先確認變數是否存在，不直接依賴 locals() 判斷
+                            base_id_safe = base_id if 'base_id' in locals() else ""
+                            if exp_img and base_id_safe:
+                                with open(os.path.join(out_img_dir, f"ERROR_{base_id_safe}.txt"), "w", encoding="utf-8") as ef:
+                                    ef.write(f"{_('解碼圖片發生錯誤 (Error decoding image)')} {base_id_safe}:\n{str(e)}")
+                        except Exception: pass
         except Exception: pass
+        finally:
+            if 'env' in locals() and env:
+                del env
         return success_count, csv_rows, 1
     
     @staticmethod
@@ -1405,13 +1441,16 @@ class MDEngine:
             if modded:
                 with open(tgt_bundle, "wb") as f: f.write(env.file.save())
                 success = 1
-            del env
         except Exception: pass
+        finally:
+            if 'env' in locals() and env:
+                del env
         return success
 
     @staticmethod
     def _worker_stream_update_single(task_info):
         import gc
+        gc.collect()
         MDEngine.check_memory_limit(85.0)
         
         root_dir, file_name, clean_src_dir, out_base, overwrite, old_mod_dir = task_info
@@ -1496,13 +1535,13 @@ class MDEngine:
             t_db_start = time.perf_counter()
             if opts['gen_name'] or opts['gen_desc']:
                 try: 
-                    print("[INFO] 開始獲取文字字典（get_aligned_database）...")
+                    print(_("[INFO] 開始獲取文字字典（get_aligned_database）..."))
                     aligned_db = MDEngine.get_aligned_database(target_dir, opts, progress_cb)
                 except Exception as e: 
-                    error_logs.append(f"獲取文本字典失敗: {e}\n")
+                    error_logs.append(_("獲取文本字典失敗: {error}\n").format(error=e))
             t_db_end = time.perf_counter()
             db_duration = t_db_end - t_db_start
-            print(f"[METRIC] 字典載入耗時: {db_duration:.4f} 秒 (找到 {len(aligned_db)} 筆資料)")
+            print(_("[METRIC] 字典載入耗時: {duration:.4f} 秒 (找到 {count} 筆資料)").format(duration=db_duration, count=len(aligned_db)))
 
             target_dirs = [target_dir]
             parts = os.path.normpath(target_dir).split(os.sep)
@@ -1517,13 +1556,13 @@ class MDEngine:
             exclude_paths = [out_dir, MDEngine.TEMP_DIR] # 🛡️ 將輸出目錄與系統暫存加入結界
             for d in target_dirs:
                 folder_type = "StreamingAssets" if "StreamingAssets" in d else "0000"
-                for root, _dirs, files in os.walk(d):
-                    MDEngine.prune_walk_dirs(root, _dirs, exclude_paths) # 🛡️ 動態剪枝
+                for root, dummy_dirs, files in os.walk(d):
+                    MDEngine.prune_walk_dirs(root, dummy_dirs, exclude_paths) # 🛡️ 動態剪枝
                     for f in files:
                         raw_files.append((os.path.join(root, f), f, folder_type))
             t_walk_end = time.perf_counter()
             walk_duration = t_walk_end - t_walk_start
-            print(f"[METRIC] os.walk 搜尋 {len(raw_files)} 個檔案路徑耗時: {walk_duration:.4f} 秒")
+            print(_("[METRIC] os.walk 搜尋 {count} 個檔案路徑耗時: {duration:.4f} 秒").format(count=len(raw_files), duration=walk_duration))
 
             extracted_names, mapping_data, count = set(), [], 0
             total_files = len(raw_files)
@@ -1535,9 +1574,9 @@ class MDEngine:
                 batch_size = max(50, min(500, total_files // max(1, (workers_num * 4))))
                 batches = [raw_files[i:i + batch_size] for i in range(0, total_files, batch_size)]
                 
-                print(f"[INFO] 啟動多程序（{workers_num} 核心），分裝成 {len(batches)} 個批次（每批約 {batch_size} 個）...")
+                print(_("[INFO] 啟動多程序（{workers} 核心），分裝成 {batch_count} 個批次（每批約 {batch_size} 個）...").format(workers=workers_num, batch_count=len(batches), batch_size=batch_size))
                 with concurrent.futures.ProcessPoolExecutor(max_workers=workers_num, initializer=_init_worker, initargs=(UI_LANG_DICT,)) as executor:
-                    # 🛡️ 防護：傳遞 opts 的深度副本，防止 R9 9950x 多核狂奔時污染 XOR 密鑰記憶體
+                    # 🛡️ 防護：傳遞 opts 的深度副本，防止多核狂奔時污染 XOR 密鑰記憶體
                     opts_copy = opts.copy()
                     futures = [executor.submit(MDEngine._worker_scan_batch, b, opts_copy) for b in batches]
                     for future in concurrent.futures.as_completed(futures):
@@ -1548,10 +1587,10 @@ class MDEngine:
                             count += processed
                             if progress_cb: progress_cb(count)
                         except Exception as e:
-                            error_logs.append(f"批次處理發生異常: {e}\n")
+                            error_logs.append(_("批次處理發生異常: {error}\n").format(error=e))
             t_mp_end = time.perf_counter()
             mp_duration = t_mp_end - t_mp_start
-            print(f"[METRIC] 多程序掃描 3D/2D 貼圖耗時: {mp_duration:.4f} 秒")
+            print(_("[METRIC] 多程序掃描 3D/2D 貼圖耗時: {duration:.4f} 秒").format(duration=mp_duration))
             print("========== [TELEMETRY END] ==========\n")
 
             if opts['gen_txt'] and extracted_names:
@@ -1613,8 +1652,8 @@ class MDEngine:
         exclude_paths = [MDEngine.TEMP_DIR] # 🛡️ 阻擋掃描到暫存檔
         for d in target_dirs:
             folder_type = "StreamingAssets" if "StreamingAssets" in d else "0000"
-            for root, _dirs, files in os.walk(d):
-                MDEngine.prune_walk_dirs(root, _dirs, exclude_paths) # 🛡️ 動態剪枝
+            for root, dummy_dirs, files in os.walk(d):
+                MDEngine.prune_walk_dirs(root, dummy_dirs, exclude_paths) # 🛡️ 動態剪枝
                 for f in files:
                     raw_files.append((os.path.join(root, f), f, folder_type))
 
@@ -1775,8 +1814,8 @@ class MDEngine:
             # 🛡️ 展開迴圈並套用動態剪枝，防止把剛提取出來的備份又當作來源讀取
             tasks = []
             exclude_paths = [out_img_dir, backup_dir, MDEngine.TEMP_DIR]
-            for root, _dirs, files in os.walk(hash_dir):
-                MDEngine.prune_walk_dirs(root, _dirs, exclude_paths)
+            for root, dummy_dirs, files in os.walk(hash_dir):
+                MDEngine.prune_walk_dirs(root, dummy_dirs, exclude_paths)
                 for f in files:
                     tasks.append((os.path.join(root, f), f, out_img_dir, backup_dir, exp_csv, exp_img, exp_backup, visual_only))
                     
@@ -2169,7 +2208,7 @@ class MDEngine:
     def task_quick_replace(target_id, csv_path, src_dir, out_root, img_path, overwrite, backup_folder, out_folder, progress_cb, finish_cb):
         try:
             mapping, _db = MDEngine.get_csv_data(csv_path)
-            if target_id not in mapping: raise Exception(f"CSV 中找不到 ID: {target_id}")
+            if target_id not in mapping: raise Exception(_("CSV 中找不到 ID: {id}").format(id=target_id))
             success, count = 0, 0
             for item in mapping[target_id]:
                 hash_name, folder = item['hash'], item['folder']
@@ -2197,11 +2236,13 @@ class MDEngine:
                 
                 if modded_flag:
                     with open(modded_file, "wb") as f: f.write(env.file.save())
-                    del env
                     if overwrite: shutil.copy2(modded_file, src_file)
                     success += 1
-                else:
+                    
+                # 🛡️ 確保 env 一定會被釋放
+                if env:
                     del env
+                    
             finish_cb(True, success, None)
         except PermissionError:
             finish_cb(False, _("權限不足！請確認資料來源、目標資料夾或圖片是否被系統保護，或嘗試使用系統管理員權限執行。"), traceback.format_exc())
@@ -2248,6 +2289,17 @@ class MDEngine:
         ld_idx = next((i for i, p in enumerate(parts) if p.lower() == "localdata"), -1)
         if ld_idx != -1: return os.path.join(os.sep.join(parts[:ld_idx]), "masterduel_Data", "data.unity3d")
         return os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(norm))), "masterduel_Data", "data.unity3d")
+
+    @staticmethod
+    def get_sa_dir_safe(game_0000):
+        """🛡️ 智慧反推 StreamingAssets/AssetBundle 的實體路徑"""
+        norm = os.path.normpath(game_0000)
+        parts = norm.split(os.sep)
+        ld_idx = next((i for i, p in enumerate(parts) if p.lower() == "localdata"), -1)
+        if ld_idx != -1:
+            return os.path.join(os.sep.join(parts[:ld_idx]), "masterduel_Data", "StreamingAssets", "AssetBundle")
+        # 降級備用：如果找不到 LocalData，直接往上推三層尋找
+        return os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(norm))), "masterduel_Data", "StreamingAssets", "AssetBundle")
 
     @staticmethod
     def _inject_texture_core(env, target_name, img_path):
@@ -2351,7 +2403,7 @@ class MDEngine:
             game_sa = MDEngine.get_sa_dir_safe(game_0000)
             link_map = {}
             def scan_files(src_folder, dest_root, base_mod_name):
-                for root, _dirs, files in os.walk(src_folder):
+                for root, dummy_dirs, files in os.walk(src_folder):
                     for f in files:
                         src_file = os.path.join(root, f)
                         rel = os.path.relpath(src_file, src_folder)
@@ -2504,10 +2556,13 @@ class MDEngine:
 
     @staticmethod
     def read_overframe_bytes(filepath):
-        """從 Unity Bundle 二進位中光速提取紀錄"""
+        """從 Unity Bundle 二進位中光速提取紀錄，完全阻斷檔案鎖定"""
         records = {}
         try:
-            env = UnityPy.load(filepath)
+            # 💡 將實體檔案隔離，避免 UI 執行緒的延遲回收導致檔案被咬死
+            with open(filepath, "rb") as f:
+                file_data = f.read()
+            env = UnityPy.load(file_data)
             for obj in env.objects:
                 if obj.type.name == "TextAsset":
                     data = obj.read()
@@ -2519,59 +2574,201 @@ class MDEngine:
                             t, b = struct.unpack("<HH", script_bytes[i:i+4])
                             records[t] = b
                         break
-        except Exception: pass
+        except Exception: 
+            pass
         return records
     
     @staticmethod
     def _worker_locate_gate(file_batch):
-        """背景工作站：1MB 以下檔案超高速爆搜"""
+        """背景工作站：統一版 1MB 以下檔案超高速爆搜，先讀入記憶體防止鎖死，並嚴格管控 RAM"""
         import UnityPy
+        import os
         for filepath, filename in file_batch:
+            file_data = None
+            env = None
             try:
+                # 第一道防線：超過 1MB 的檔案直接跳過，阻絕大檔佔用
                 if os.path.getsize(filepath) > 1024 * 1024: continue
                 if not MDEngine.is_unity_bundle(filepath): continue
-                env = UnityPy.load(filepath)
+                
+                # 從硬碟抽入記憶體，閃電釋放檔案鎖定
+                with open(filepath, "rb") as f:
+                    file_data = f.read()
+                    
+                env = UnityPy.load(file_data)
                 for obj in env.objects:
                     if obj.type.name == "TextAsset":
                         data = obj.read()
                         name = getattr(data, "m_Name", getattr(data, "name", ""))
-                        if str(name) == "of_card_asset": return filepath, filename
-            except Exception: pass
-        return None, None
+                        if str(name) == "of_card_asset": 
+                            return filepath, filename, os.path.getmtime(filepath)
+            except Exception: 
+                pass
+            finally:
+                # 🛡️ 第二道防線：無論成功或失敗，強制掐斷記憶體參照，防止多執行緒狂奔時的垃圾累積
+                if env:
+                    del env
+                if file_data:
+                    del file_data
+                    
+        return None, None, 0
 
     @staticmethod
-    def task_locate_and_write_overframe(src_dir, out_root, out_folder, rec_curr, rec_new, target_hash, progress_cb, finish_cb):
+    def _search_gate_bundle_core(src_dir, exclude_paths, strategy="FAST", progress_cb=None):
+        """核心搜尋引擎：負責排程與分流 (FAST 快速模式 / LATEST 精準模式)"""
+        raw_files = []
+        # 🛡️ 替換 _dirs 為 dummy_dirs，嚴格遵循不使用 _ 的規則
+        for root, dummy_dirs, files in os.walk(src_dir):
+            MDEngine.prune_walk_dirs(root, dummy_dirs, exclude_paths)
+            for f in files: 
+                raw_files.append(os.path.join(root, f))
+                
+        total_files = len(raw_files)
+        if progress_cb: progress_cb(1) # 啟動任務時發送初始訊號
+        
+        workers_num = MDEngine.get_heavy_task_workers("Auto")
+        batch_size = max(50, total_files // max(1, (workers_num * 4)))
+        batches = [[(p, os.path.basename(p)) for p in raw_files[i:i + batch_size]] for i in range(0, total_files, batch_size)]
+        
+        best_path, best_hash, best_time = None, None, 0
+        processed_count = 0
+        
+        with concurrent.futures.ProcessPoolExecutor(max_workers=workers_num, initializer=_init_worker, initargs=(UI_LANG_DICT,)) as executor:
+            # 🛡️ DRY 原則：建立 Future 到批次大小的對應字典，簡化後續的計算邏輯
+            future_to_batch = {executor.submit(MDEngine._worker_locate_gate, b): len(b) for b in batches}
+            
+            for future in concurrent.futures.as_completed(future_to_batch):
+                # 統一在此累加進度，無論成功或拋出例外，進度條絕不卡死
+                processed_count += future_to_batch[future]
+                if progress_cb: progress_cb(processed_count)
+                
+                try:
+                    fp, fh, ftime = future.result()
+                    if fp:
+                        if strategy == "FAST":
+                            # 快速模式：找到後立即取消剩餘任務並回傳
+                            for f_pending in future_to_batch: f_pending.cancel()
+                            return fp, fh
+                        elif strategy == "LATEST":
+                            if ftime > best_time:
+                                best_path, best_hash, best_time = fp, fh, ftime
+                except Exception: 
+                    pass # 靜默處理子行程例外，防止單一檔案損壞影響整體進度
+                
+        return best_path, best_hash
+
+    @staticmethod
+    def task_auto_repair_gate(src_dir, out_root, out_folder, backup_folder, current_hash, progress_cb, finish_cb):
+        """自動無縫修復器：三道防線尋找玩家心血，歷史快軌驗證避免盲目爆搜"""
         try:
-            # 🛡️ 動態 Hash 解析：一律使用傳入的正確 target_hash
+            backup_dir = os.path.join(MDEngine.TEMP_DIR, "of_card_asset_backups")
+            snap_path = os.path.join(backup_dir, "snapshot.bundle")
+            history_file = os.path.join(backup_dir, "hash_history.json")
+            out_dir = os.path.join(out_root, out_folder)
+
+            user_records = {}
+            pristine_records = {}
+            found_old_data = False
+            latest_history_hash = ""
+
+            if os.path.exists(history_file):
+                try:
+                    with open(history_file, "r", encoding="utf-8") as f_hist:
+                        hist_data = json.load(f_hist)
+                        if isinstance(hist_data, list) and len(hist_data) > 0:
+                            latest_history_hash = str(hist_data[0]).strip()
+                except Exception:
+                    pass
+
+            user_file_t1 = os.path.join(out_dir, current_hash)
+            pristine_file_t1 = os.path.join(backup_dir, f"{current_hash}.pristine")
+            if os.path.exists(user_file_t1) and os.path.exists(pristine_file_t1):
+                user_records = MDEngine.read_overframe_bytes(user_file_t1)
+                pristine_records = MDEngine.read_overframe_bytes(pristine_file_t1)
+                found_old_data = True
+
+            if not found_old_data and latest_history_hash:
+                user_file_t2 = os.path.join(out_dir, latest_history_hash)
+                pristine_file_t2 = os.path.join(backup_dir, f"{latest_history_hash}.pristine")
+                if os.path.exists(user_file_t2) and os.path.exists(pristine_file_t2):
+                    user_records = MDEngine.read_overframe_bytes(user_file_t2)
+                    pristine_records = MDEngine.read_overframe_bytes(pristine_file_t2)
+                    found_old_data = True
+
+            if not found_old_data and os.path.exists(snap_path):
+                user_records = MDEngine.read_overframe_bytes(snap_path)
+                if os.path.exists(pristine_file_t1):
+                    pristine_records = MDEngine.read_overframe_bytes(pristine_file_t1)
+                elif latest_history_hash:
+                    fallback_pristine = os.path.join(backup_dir, f"{latest_history_hash}.pristine")
+                    if os.path.exists(fallback_pristine):
+                        pristine_records = MDEngine.read_overframe_bytes(fallback_pristine)
+
+            user_diff = {t: b for t, b in user_records.items() if t not in pristine_records or pristine_records[t] != b}
+
+            best_path = ""
+            best_hash = ""
+
+            if latest_history_hash:
+                candidate_path = MDEngine.get_actual_source_path(src_dir, latest_history_hash)
+                if os.path.exists(candidate_path) and MDEngine.validate_gate_file(candidate_path):
+                    best_path = candidate_path
+                    best_hash = latest_history_hash
+
+            if not best_path:
+                found_path, found_hash = MDEngine._search_gate_bundle_core(src_dir, [out_root, MDEngine.TEMP_DIR], "FAST", progress_cb)
+                if found_path:
+                    best_path = found_path
+                    best_hash = found_hash
+
+            if not best_path:
+                return finish_cb(False, _("在來源資料夾中找不到任何 of_card_asset 註冊表！"), None)
+
+            # 呼叫共用核心，將 backup_folder 安全傳遞下去
+            MDEngine.task_locate_and_write_overframe(src_dir, out_root, out_folder, backup_folder, user_diff, {}, best_hash, progress_cb, finish_cb)
+        except Exception as e:
+            finish_cb(False, str(e), traceback.format_exc())
+
+    @staticmethod
+    def task_locate_and_write_overframe(src_dir, out_root, out_folder, backup_folder, rec_curr, rec_new, target_hash, progress_cb, finish_cb):
+        """核心寫入引擎：負責生成原裝備份與純淨輸出，嚴格控制資源與檔案鎖定"""
+        try:
             gate_path = MDEngine.get_actual_bundle_path(src_dir, target_hash)
             if not os.path.exists(gate_path): 
                 gate_path = MDEngine.get_actual_source_path(src_dir, target_hash, "StreamingAssets")
             
-            # 🛡️ 聯集合併安全策略：若未找到任何檔案，先不寫入以防毀損
             if not os.path.exists(gate_path) and not rec_curr:
                 return finish_cb(False, _("找不到 of_card_asset 註冊表原檔，無法進行寫入！"), None)
 
-            # 真・物理安全備份 (.pristine)：在此刻建立基準線，絕不污染
             backup_dir = os.path.join(MDEngine.TEMP_DIR, "of_card_asset_backups")
             os.makedirs(backup_dir, exist_ok=True)
             pristine_file = os.path.join(backup_dir, f"{target_hash}.pristine")
-            if os.path.exists(gate_path) and not os.path.exists(pristine_file):
-                shutil.copy2(gate_path, pristine_file)
+            
+            # ✨ 雙重備份機制歸位 (回歸扁平化純淨備份，不再越權打包)
+            if os.path.exists(gate_path):
+                # 1. 儲存給內部比對用的純淨基底
+                if not os.path.exists(pristine_file):
+                    shutil.copy2(gate_path, pristine_file)
+                    
+                # 2. 儲存給玩家的實體原廠備份 (扁平化平鋪，與提取資料分頁的邏輯完全一致)
+                if backup_folder:
+                    user_backup_dir = os.path.join(out_root, backup_folder)
+                    os.makedirs(user_backup_dir, exist_ok=True)
+                    user_backup_file = os.path.join(user_backup_dir, target_hash)
+                    if not os.path.exists(user_backup_file):
+                        shutil.copy2(gate_path, user_backup_file)
 
-            # 🛡️ 讀取原廠或備份的基底資料
             read_target = pristine_file if os.path.exists(pristine_file) else gate_path
             original_records = {}
             if os.path.exists(read_target):
                 original_records = MDEngine.read_overframe_bytes(read_target)
 
-            # 🛡️ 聯集核心判定
             if not rec_curr:
                 rec_curr = dict(original_records)
 
             conflicts = []
             for t, b in rec_new.items():
                 if t in rec_curr and rec_curr[t] != b:
-                    # 智慧辨識衝突類型：若是玩家自體註冊但官方是指向 0，則判定為佔位符衝突
                     conf_type = _("【官方保留佔位符衝突】") if (b == t and rec_curr[t] == 0) else _("【同項目指向不同目標】")
                     conf_msg = _("❌ 衝突類型：{ctype}\n   - 衝突項目 ID：[{t}]\n   - 現有/官方指向：[{curr}]\n   - 您的新註冊指向：[{new_b}]\n   👉 解決建議：若為官方佔位符(指向0)，請勿對其進行註冊；若為手動覆寫，請確認是否要刪除舊有指向。").format(ctype=conf_type, t=t, curr=rec_curr[t], new_b=b)
                     conflicts.append(conf_msg)
@@ -2579,31 +2776,16 @@ class MDEngine:
             if conflicts: return finish_cb(False, _("🚨 偵測到註冊表合併衝突，為保護檔案結構，已中斷寫入：\n\n") + "\n\n".join(conflicts), None)
 
             if not os.path.exists(gate_path):
-                # 執行動態爆搜
-                if progress_cb: progress_cb(0)
-                # 🛡️ 動態剪枝，防止把剛輸出到根目錄的註冊表又當來源讀進來發生錯亂
-                raw_files = []
-                exclude_paths = [out_root, MDEngine.TEMP_DIR]
-                for root, _dirs, files in os.walk(src_dir):
-                    MDEngine.prune_walk_dirs(root, _dirs, exclude_paths)
-                    for f in files:
-                        raw_files.append(os.path.join(root, f))
-                        
-                workers_num = MDEngine.get_heavy_task_workers("Auto")
-                batch_size = max(50, len(raw_files) // max(1, (workers_num * 4)))
-                batches = [[(p, os.path.basename(p)) for p in raw_files[i:i + batch_size]] for i in range(0, len(raw_files), batch_size)]
-                
-                found_path, found_hash = None, None
-                with concurrent.futures.ProcessPoolExecutor(max_workers=workers_num) as executor:
-                    for fp, fh in executor.map(MDEngine._worker_locate_gate, batches):
-                        if fp:
-                            found_path, found_hash = fp, fh
-                            break
+                found_path, found_hash = MDEngine._search_gate_bundle_core(src_dir, [out_root, MDEngine.TEMP_DIR], "FAST", progress_cb)
                 if not found_path:
                     return finish_cb(False, _("在來源資料夾中找不到 of_card_asset！"), None)
                 gate_path, target_hash = found_path, found_hash
 
-            env = UnityPy.load(gate_path)
+            # 💡 關鍵修復：從硬碟讀入記憶體，離開 with 區塊的瞬間徹底解除檔案鎖定！
+            with open(gate_path, "rb") as f:
+                file_data = f.read()
+
+            env = UnityPy.load(file_data)
             success = False
             for obj in env.objects:
                 if obj.type.name == "TextAsset":
@@ -2619,20 +2801,24 @@ class MDEngine:
                         os.makedirs(out_dir, exist_ok=True)
                         final_path = os.path.join(out_dir, target_hash)
                         
-                        if os.path.exists(final_path):
-                            try:
-                                bak_path = final_path + ".bak"
-                                if os.path.exists(bak_path): os.remove(bak_path)
-                                os.rename(final_path, bak_path)
-                            except Exception: pass
+                        try:
+                            with open(final_path, "wb") as f: 
+                                f.write(env.file.save())
+                        except PermissionError:
+                            return finish_cb(False, _("寫入失敗！檔案可能正被遊戲或其他程式佔用，請關閉後再試。"), None)
                             
-                        with open(final_path, "wb") as f: f.write(env.file.save())
                         success = True
+                        
+                        try:
+                            snap_path = os.path.join(backup_dir, "snapshot.bundle")
+                            shutil.copy2(final_path, snap_path)
+                        except Exception: pass
                         break
+            del env 
+            del file_data
             
             if not success: return finish_cb(False, _("寫入失敗！檔案結構異常。"), None)
             
-            # 歷史紀錄保存
             try:
                 history_file = os.path.join(backup_dir, "registered_history.json")
                 hist = {}
@@ -2650,17 +2836,53 @@ class MDEngine:
                 with open(history_file, "w", encoding="utf-8") as f: json.dump(hist, f, indent=4)
             except Exception: pass
 
+            if env: del env
             finish_cb(True, len(rec_curr), target_hash)
         except Exception as e:
             finish_cb(False, str(e), traceback.format_exc())
 
     @staticmethod
+    def task_manual_sync_overframe(src_dir, out_root, out_folder, backup_folder, curr_hash, progress_cb, finish_cb):
+        """手動爆搜修正：提取舊差異 -> 爆搜最新基底 -> 合併寫入"""
+        try:
+            backup_dir = os.path.join(MDEngine.TEMP_DIR, "of_card_asset_backups")
+            pristine_path = os.path.join(backup_dir, f"{curr_hash}.pristine")
+            snap_path = os.path.join(backup_dir, "snapshot.bundle")
+            
+            user_file = os.path.join(out_root, out_folder, curr_hash)
+            if not os.path.exists(user_file) and os.path.exists(snap_path): user_file = snap_path
+                
+            user_records = {}
+            if os.path.exists(user_file): user_records = MDEngine.read_overframe_bytes(user_file)
+            pristine_records = {}
+            if os.path.exists(pristine_path): pristine_records = MDEngine.read_overframe_bytes(pristine_path)
+                
+            user_diff = {t: b for t, b in user_records.items() if t not in pristine_records or pristine_records[t] != b}
+
+            best_path, best_hash = MDEngine._search_gate_bundle_core(src_dir, [out_root, MDEngine.TEMP_DIR], "LATEST", progress_cb)
+            if not best_path: return finish_cb(False, _("在來源資料夾中找不到任何 of_card_asset 註冊表！"), None)
+
+            os.makedirs(backup_dir, exist_ok=True)
+            new_pristine_path = os.path.join(backup_dir, f"{best_hash}.pristine")
+            if not os.path.exists(new_pristine_path):
+                shutil.copy2(best_path, new_pristine_path)
+            
+            pristine_base_records = MDEngine.read_overframe_bytes(new_pristine_path)
+            merged_records = dict(pristine_base_records)
+            merged_records.update(user_diff)
+                
+            MDEngine.task_locate_and_write_overframe(src_dir, out_root, out_folder, backup_folder, merged_records, {}, best_hash, progress_cb, finish_cb)
+        except Exception as e:
+            finish_cb(False, str(e), traceback.format_exc())
+
+    @staticmethod
     def parse_overframe_text(text):
+        """多語系防護版：以 '#' 或 '=' 開頭的字串一律視為分隔線安全忽略"""
         records, conflicts = {}, []
         for line in text.splitlines():
             line = line.strip()
-            if not line or "===以上為原始" in line or line.startswith("#"): continue
-            # 🛡️ 智慧分割法：不再依賴貪婪正則，直接以箭頭將字串一分為二，徹底免疫任何括號名稱干擾
+            # 🛡️ 只要是以 # 或 = 開頭，一律安全忽略，徹底免疫翻譯造成的字串變動
+            if not line or line.startswith("#") or line.startswith("="): continue
             parts = re.split(r'->|>', line)
             try:
                 t_match = re.search(r'\d+', parts[0])
@@ -3235,7 +3457,7 @@ class TabFind(BaseTab):
         try:
             with open(clean_path(self.config.get("t2_txt_dir")), "r", encoding="utf-8") as f:
                 self.t2_text.setPlainText("\n".join([l.strip() for l in f if re.match(r'^[a-zA-Z0-9_]+', l.strip())]))
-        except: pass
+        except Exception: pass
 
     def norm_txt(self):
         c = self.config
@@ -3826,7 +4048,7 @@ class TabQuickMod(BaseTab):
         
         self.t9_img_edit = self.make_path_row(self.form2, _("新圖片路徑"), "t9_img_path", True, "IMG")
         
-        cb_overwrite = self.bind_check("t9_overwrite_game", _("直接覆蓋遊戲檔案 (⚠ 警告：此操作將直接修改原廠遊戲目錄，請確保檔案已備份)"))
+        cb_overwrite = self.bind_check("t9_overwrite_game", _("直接覆蓋遊戲檔案\n⚠ 警告：此操作將直接修改原廠遊戲目錄\n請確保檔案已備份"))
         cb_overwrite.setStyleSheet("color: #D83C3C; font-weight: bold;")
         self.form2.addRow(cb_overwrite)
         self.layout.addWidget(grp2)
@@ -4541,10 +4763,14 @@ class TabOverFrame(BaseTab):
     def __init__(self, main_app):
         super().__init__(main_app)
         self.config.signals.quick_mod_to_overframe_reg.connect(self.handle_quick_mod_reg)
-        self.layout.addWidget(QLabel(_("【專屬工具】超框立體卡圖白名單註冊器 (Over-Frame Art)")))
+        
+        lbl_title = QLabel(_("【專屬工具】超框立體卡圖白名單註冊器 (Over-Frame Art)"))
+        lbl_title.setWordWrap(True) # 🛡️ 修復：防止標題過長撐破視窗
+        self.layout.addWidget(lbl_title)
 
-        warn_lbl = QLabel(_("⚠️ 溫馨提醒：超框立體卡圖請使用 11:16 寬高比（例如 704 x 1024）的圖片。\n寫入此註冊表後，遊戲會把該圖「覆蓋在整張卡片之上」，使用傳統方形卡圖會嚴重變形！\n目前的註冊表為a589d3b5(2026/7/8)"))
+        warn_lbl = QLabel(_("⚠️ 溫馨提醒：超框立體卡圖請使用 11:16 寬高比（例如 704 x 1024）的圖片。\n寫入此註冊表後，遊戲會把該圖「覆蓋在整張卡片之上」，使用傳統方形卡圖會嚴重變形！\n目前的註冊表會隨著遊戲更新自動尋找替換。"))
         warn_lbl.setStyleSheet("color: #E0C030; font-weight: bold; font-size: 14px; margin-bottom: 5px;")
+        warn_lbl.setWordWrap(True) # 🛡️ 修復：開啟自動換行，防止英文翻譯過長無限延伸
         self.layout.addWidget(warn_lbl)
 
         grp_paths = QGroupBox(_("路徑設定 (與其他分頁同步)"))
@@ -4552,6 +4778,15 @@ class TabOverFrame(BaseTab):
         self.make_path_row(form, _("字典 (CSV) 檔案"), "t13_csv_dir", True, "CSV", "csv", placeholder="這裡放你的CSV檔(記得去設定按儲存)")
         self.make_path_row(form, _("遊戲原檔來源 (0000)"), "t13_src_dir", sync_type="src", placeholder="你的槽:\\SteamLibrary\\steamapps\\common\\Yu-Gi-Oh! Master Duel\\LocalData\\你的八字編號\\0000")
         self.make_path_row(form, _("儲存根目錄"), "t13_out_dir", sync_type="root", placeholder="這裡輸入你的工作路徑根目錄(記得去設定按儲存)")
+        
+        self.cb_gate_hash = QComboBox()
+        self.cb_gate_hash.setEditable(True)
+        self._load_hash_history()
+        self.cb_gate_hash.setCurrentText(self.config.get("t13_gate_hash", "22817d01"))
+        self.cb_gate_hash.currentTextChanged.connect(lambda t: self.config.set("t13_gate_hash", t.strip()))
+        self.block_wheelEvent(self.cb_gate_hash)
+        form.addRow(_("目標註冊表 (Hash):"), self.cb_gate_hash)
+        
         self.make_path_row(form, _("欲合併用註冊表 (可選)"), "t13_merge_gate_path", True, "All", placeholder="請選擇做好的of_card_asset註冊表(將會合併另存新檔)")
         self.layout.addWidget(grp_paths)
 
@@ -4562,28 +4797,40 @@ class TabOverFrame(BaseTab):
         h_lang = QHBoxLayout()
         self.cb_lang = QComboBox()
         self.cb_lang.addItems(["zh-tw", "zh-cn", "en-us", "ja-jp"])
+        self.cb_lang.setEditable(True) # 🛡️ 修復：開放玩家手動編輯自訂語系
         self.cb_lang.setCurrentText(self.config.get("search_lang", "zh-tw"))
         self.cb_lang.currentTextChanged.connect(lambda t: [self.config.set("search_lang", t), self.load_gate_if_possible()])
         self.block_wheelEvent(self.cb_lang)
-        h_lang.addWidget(QLabel(_("顯示對照語系:"))); h_lang.addWidget(self.cb_lang); h_lang.addStretch()
+        
+        btn_manual_sync = QPushButton(_("🛠️ 手動爆搜修正 (大更新後專用)"))
+        btn_manual_sync.setStyleSheet("color: #D83C3C; font-weight: bold;")
+        btn_manual_sync.clicked.connect(self.run_manual_sync)
+
+        h_lang.addWidget(QLabel(_("顯示對照語系:")))
+        h_lang.addWidget(self.cb_lang)
+        h_lang.addWidget(btn_manual_sync) # 🛡️ 修復：將手動爆搜按鈕精準放置於語系的右邊
+        h_lang.addStretch()
         v1.addLayout(h_lang)
 
-        h1 = QHBoxLayout()
+        grid1 = QGridLayout() # 👈 改用 Grid 網格佈局
         btn_load = QPushButton(_("📥 讀取現有原檔")); btn_load.clicked.connect(self.load_gate)
-        
         btn_clear = QPushButton(_("🧹 清除快取註冊表")); btn_clear.setStyleSheet("color: #D83C3C; font-weight: bold;")
         btn_clear.clicked.connect(self.clear_cache)
-        
         btn_save_ext = QPushButton(_("💾 儲存現有白名單")); btn_save_ext.setStyleSheet("color: #2CC985; font-weight: bold;")
         btn_save_ext.clicked.connect(self.save_existing_only)
-        
         btn_merge = QPushButton(_("🔗 與「欲合併用註冊表」合併")); btn_merge.clicked.connect(self.merge_gate)
-        
-        h1.addWidget(btn_load); h1.addWidget(btn_clear); h1.addWidget(btn_save_ext); h1.addWidget(btn_merge)
-        v1.addLayout(h1)
+
+        # 第一列 (Row 0)
+        grid1.addWidget(btn_load, 0, 0)
+        grid1.addWidget(btn_clear, 0, 1)
+        # 第二列 (Row 1)
+        grid1.addWidget(btn_save_ext, 1, 0)
+        grid1.addWidget(btn_merge, 1, 1)
+
+        v1.addLayout(grid1)
 
         mono_font = QFontDatabase.systemFont(QFontDatabase.FixedFont)
-        if mono_font.pointSize() <= 0: mono_font.setPointSize(10) # 🛡️ 修復 QFont 大小為負數的系統警告
+        if mono_font.pointSize() <= 0: mono_font.setPointSize(10)
         
         self.txt_existing = QPlainTextEdit()
         self.txt_existing.setFont(mono_font)
@@ -4595,22 +4842,32 @@ class TabOverFrame(BaseTab):
         # 第二部分：新增註冊
         grp3 = QGroupBox(_("第二部分：新增註冊與寫入"))
         v3 = QVBoxLayout(grp3)
-        h3 = QHBoxLayout()
-        btn_goto_t2 = QPushButton(_("🔍 前往「找出檔案」頁面挑選卡片")); btn_goto_t2.clicked.connect(self.goto_tab2)
-        btn_hist = QPushButton(_("📜 讀取過去成功註冊的歷史紀錄")); btn_hist.clicked.connect(self.load_history)
+        
+        # 👈 改用 2x2 網格佈局 (QGridLayout)，釋放雙倍的水平寬度
+        grid3 = QGridLayout()
+        btn_goto_t2 = QPushButton(_("🔍 前往「找出檔案」頁面挑選卡片"))
+        btn_goto_t2.clicked.connect(self.goto_tab2)
+        btn_hist = QPushButton(_("📜 讀取過去成功註冊的歷史紀錄"))
+        btn_hist.clicked.connect(self.load_history)
         btn_norm = QPushButton(_("✨ 正規化補名"))
+        btn_norm.clicked.connect(self.norm_txt)
         btn_clear_hist = QPushButton(_("🧹 清除歷史紀錄"))
         btn_clear_hist.setStyleSheet("color: #D83C3C; font-weight: bold;")
         btn_clear_hist.clicked.connect(self.clear_history)
 
-        btn_norm.clicked.connect(self.norm_txt)
-        h3.addWidget(btn_goto_t2); h3.addWidget(btn_hist); h3.addWidget(btn_norm); h3.addWidget(btn_clear_hist)
-        v3.addLayout(h3)
+        # 第一列 (Row 0)：主要挑選與讀取功能
+        grid3.addWidget(btn_goto_t2, 0, 0)
+        grid3.addWidget(btn_hist, 0, 1)
+        # 第二列 (Row 1)：格式整理與清除功能
+        grid3.addWidget(btn_norm, 1, 0)
+        grid3.addWidget(btn_clear_hist, 1, 1)
+
+        v3.addLayout(grid3)
 
         self.txt_new = QPlainTextEdit()
         self.txt_new.setFont(mono_font)
         self.txt_new.setMinimumHeight(200)
-        self.txt_new.setPlaceholderText(_("請輸入欲註冊超框的卡片 ID (一行一個)。支援直接貼上第二頁的格式！\n範例：\n20570\n22811 -> 17069 (冰劍龍借用異圖)"))
+        self.txt_new.setPlaceholderText(_("請輸入欲註冊超框的卡片 ID (一行一個)。\n支援直接貼上第二頁的格式！\n範例：\n20570\n22811 -> 17069 (冰劍龍借用異圖)"))
         self.prevent_scroll_propagation(self.txt_new)
         v3.addWidget(self.txt_new)
         self.layout.addWidget(grp3)
@@ -4629,77 +4886,118 @@ class TabOverFrame(BaseTab):
         self.config.signals.set_return_to_tab4.connect(lambda val: setattr(self, '_return_to_tab4', val))
         self.config.signals.request_overframe_register.connect(lambda t: self.txt_new.setPlainText(t))
 
+    def _load_hash_history(self):
+        hist_file = os.path.join(MDEngine.TEMP_DIR, "of_card_asset_backups", "hash_history.json")
+        hashes = ["22817d01", "a589d3b5"]
+        if os.path.exists(hist_file):
+            try:
+                with open(hist_file, "r") as f:
+                    data = json.load(f)
+                    if isinstance(data, list): hashes = data
+            except: pass
+        self.cb_gate_hash.addItems(hashes)
+        
+    def _add_hash_to_history(self, new_hash):
+        hist_file = os.path.join(MDEngine.TEMP_DIR, "of_card_asset_backups", "hash_history.json")
+        hashes = [self.cb_gate_hash.itemText(i) for i in range(self.cb_gate_hash.count())]
+        if new_hash not in hashes:
+            hashes.insert(0, new_hash)
+            self.cb_gate_hash.insertItem(0, new_hash)
+            try:
+                os.makedirs(os.path.dirname(hist_file), exist_ok=True)
+                with open(hist_file, "w") as f: json.dump(hashes, f)
+            except: pass
+
     def handle_quick_mod_reg(self, card_id):
         current_text = self.txt_new.toPlainText().strip()
-        # 避免重複添加相同 ID
         if card_id not in current_text:
             new_text = current_text + "\n" + card_id if current_text else card_id
             self.txt_new.setPlainText(new_text)
-            self.norm_txt()  # 觸發現有的正規化功能，將卡片名稱精準附掛在後方
+            self.norm_txt()
         self.app.select_tab("t13_overframe")
 
     def load_gate_if_possible(self):
         if self.txt_existing.toPlainText().strip(): self.load_gate()
 
+    def run_manual_sync(self):
+        c = self.config
+        src_dir, out_root = clean_path(c.get("t13_src_dir")), clean_path(c.get("t13_out_dir"))
+        if not os.path.isdir(src_dir) or not os.path.isdir(out_root):
+            return QMessageBox.critical(self, _("錯誤"), _("來源或輸出目錄設定無效！"))
+        
+        curr_hash = c.get("t13_gate_hash", "22817d01")
+        out_folder = c.get("s_folder_out", "改完的文件")
+        backup_folder = c.get("s_folder_backup", "文件備份")
+        
+        def finish_handler(ct, hash_name):
+            if isinstance(ct, bool) and not ct:
+                return _("手動修正失敗: ") + str(hash_name)
+                
+            self.config.set("t13_gate_hash", hash_name)
+            self.cb_gate_hash.setCurrentText(hash_name)
+            self.config.save()
+            
+            self._add_hash_to_history(hash_name)
+            self._render_gate(os.path.join(out_root, out_folder, hash_name))
+            return _("✨ 手動爆搜與合併修正成功！\n已找到最新版註冊表並成功寫入您的自訂名單。\n新的 Hash 為：{hash}").format(hash=hash_name)
+
+        self.app.execute_task(self.btn_run, _("掃描與修正中"), MDEngine.task_manual_sync_overframe, 
+            (src_dir, out_root, out_folder, backup_folder, curr_hash), finish_handler)
+
     def load_gate(self):
         c = self.config
         src_dir = clean_path(c.get("t13_src_dir"))
+        current_hash = c.get("t13_gate_hash", "22817d01")
         
-        # 🛡️ 智慧 Hash 解析：先從設定檔讀取（預設為 a589d3b5）
-        current_hash = c.get("t13_gate_hash", "a589d3b5")
         gate_path = MDEngine.get_actual_bundle_path(src_dir, current_hash)
         if not os.path.exists(gate_path):
             gate_path = MDEngine.get_actual_source_path(src_dir, current_hash, "StreamingAssets")
             
-        # 🛡️ 實作指紋驗證：如果檔案存在，但是內容並非真正的 of_card_asset 註冊表，一律視為無效檔案並拋棄
         is_valid = MDEngine.validate_gate_file(gate_path)
             
         if not is_valid:
-            def bg_search(prog_cb, fin_cb):
-                raw_files = [os.path.join(root, f) for root, _dirs, files in os.walk(src_dir) for f in files]
-                import concurrent.futures
-                batch_size = max(50, len(raw_files) // 4)
-                batches = [[(p, os.path.basename(p)) for p in raw_files[i:i + batch_size]] for i in range(0, len(raw_files), batch_size)]
-                
-                with concurrent.futures.ProcessPoolExecutor(max_workers=MDEngine.get_heavy_task_workers("Auto")) as ex:
-                    for fp, fh in ex.map(MDEngine._worker_locate_gate, batches):
-                        if fp: return fin_cb(True, fp, fh) # fh 是尋找到的正確 Hash 名稱
-                fin_cb(False, _("在您的來源目錄中找不到任何 of_card_asset 註冊表！"), None)
+            out_root = clean_path(c.get("t13_out_dir"))
+            out_folder = c.get("s_folder_out", "改完的文件")
+            backup_folder = c.get("s_folder_backup", "文件備份")
             
-            # 🛡️ 當爆搜成功，自動將正確的 Hash 永久寫入 JSON 設定檔，下次即可秒速載入
-            def on_found(path, extra):
-                if extra:
-                    self.config.set("t13_gate_hash", extra)
-                    self.config.save() 
-                self._render_gate(path)
-                return _("已自動爆搜、自動修正 Hash，並成功載入 of_card_asset 註冊表！")
+            def on_found(ct, hash_name):
+                if isinstance(ct, bool) and not ct: 
+                    return _("自動修復失敗: ") + str(hash_name)
                 
-            return self.app.execute_task(None, _("驗證失敗！全盤爆搜 of_card_asset 中"), bg_search, (), on_found)
+                self.config.set("t13_gate_hash", hash_name)
+                self.cb_gate_hash.setCurrentText(hash_name)
+                self.config.save() 
+                self._add_hash_to_history(hash_name)
+                self._render_gate(os.path.join(out_root, out_folder, hash_name))
+                return _("偵測到遊戲更新，已自動爆搜並無縫轉移您的自訂名單！\n新的 Hash 為：{hash}").format(hash=hash_name)
+                
+            return self.app.execute_task(None, _("發現遊戲更新！自動無縫修復中"), MDEngine.task_auto_repair_gate, 
+                                         (src_dir, out_root, out_folder, backup_folder, current_hash), on_found)
 
         self._render_gate(gate_path)
 
     def _get_rendered_gate_text(self, records):
-        """🛡️ 抽離共用的文字渲染邏輯，負責與原始檔案比對並精準插入分隔線"""
         c = self.config
-        target_hash = c.get("t13_gate_hash", "a589d3b5")
+        target_hash = c.get("t13_gate_hash", "22817d01")
         pristine_path = os.path.join(MDEngine.TEMP_DIR, "of_card_asset_backups", f"{target_hash}.pristine")
         name_map = MDEngine.get_id_to_name_map(clean_path(c.get("t13_csv_dir")), c.get("search_lang", "zh-tw"))
         
+        separator = _("\n\n# ===以上為原始檔案內容，建議不要修改===")
+        
         if os.path.exists(pristine_path):
             pristine_records = MDEngine.read_overframe_bytes(pristine_path)
-            
             p_list = {t: b for t, b in records.items() if t in pristine_records and pristine_records[t] == b}
             a_list = {t: b for t, b in records.items() if t not in pristine_records or pristine_records[t] != b}
             
             p_text = MDEngine.format_overframe_records(p_list, name_map)
             a_text = MDEngine.format_overframe_records(a_list, name_map)
             
-            final_text = p_text + "\n\n===以上為原始檔案內容，建議不要修改==="
+            final_text = p_text + separator
             if a_text: final_text += "\n\n" + a_text
             return final_text
         else:
             final_text = MDEngine.format_overframe_records(records, name_map)
-            final_text += "\n\n===以上為原始檔案內容，建議不要修改==="
+            final_text += separator
             return final_text
 
     def _render_gate(self, gate_path):
@@ -4708,7 +5006,7 @@ class TabOverFrame(BaseTab):
         self.app.status_lbl.setText(_("狀態：遊戲現有白名單已成功載入！"))
 
     def clear_cache(self):
-        target_hash = self.config.get("t13_gate_hash", "a589d3b5")
+        target_hash = self.config.get("t13_gate_hash", "22817d01")
         pristine_path = os.path.join(MDEngine.TEMP_DIR, "of_card_asset_backups", f"{target_hash}.pristine")
         if not os.path.exists(pristine_path):
             return QMessageBox.information(self, _("提示"), _("目前不存在任何快取基準檔案，不需清除！"))
@@ -4734,7 +5032,6 @@ class TabOverFrame(BaseTab):
             with open(history_file, "r", encoding="utf-8") as f: raw_hist = json.load(f)
             if not raw_hist: return QMessageBox.information(self, _("提示"), _("歷史紀錄是空的。"))
             
-            # 🛡️ 智慧相容舊版 List 與新版 Dict
             hist_recs = {}
             if isinstance(raw_hist, list):
                 for k in raw_hist:
@@ -4743,11 +5040,9 @@ class TabOverFrame(BaseTab):
                 for k, v in raw_hist.items():
                     if str(k).isdigit() and str(v).isdigit(): hist_recs[int(k)] = int(v)
             
-            # 解析當前輸入框，將歷史紀錄結合去重
             curr_recs, confs = MDEngine.parse_overframe_text(self.txt_new.toPlainText())
             curr_recs.update(hist_recs)
             
-            # 取得字典，並直接呼叫格式化函數，讓歷史紀錄出現時就帶有精美名稱！
             name_map = MDEngine.get_id_to_name_map(clean_path(self.config.get("t13_csv_dir")), self.config.get("search_lang", "zh-tw"))
             final_text = MDEngine.format_overframe_records(curr_recs, name_map)
             
@@ -4758,7 +5053,6 @@ class TabOverFrame(BaseTab):
             QMessageBox.critical(self, _("錯誤"), f"讀取歷史紀錄失敗: {e}")
 
     def norm_txt(self):
-        """主動對第二部分的輸入框進行正規化與雙側補名"""
         c = self.config
         name_map = MDEngine.get_id_to_name_map(clean_path(c.get("t13_csv_dir")), c.get("search_lang", "zh-tw"))
         curr_recs, confs = MDEngine.parse_overframe_text(self.txt_new.toPlainText())
@@ -4773,7 +5067,6 @@ class TabOverFrame(BaseTab):
         self.config.signals.sync_extraction_list.emit(formatted_text)
 
     def save_existing_only(self):
-        """獨立儲存：將使用者手動刪減的上半部名單直接寫入，不結合下半部"""
         c = self.config
         src_dir, out_root = clean_path(c.get("t13_src_dir")), clean_path(c.get("t13_out_dir"))
         if not os.path.isdir(src_dir) or not os.path.isdir(out_root):
@@ -4784,10 +5077,12 @@ class TabOverFrame(BaseTab):
             return QMessageBox.critical(self, _("語法錯誤"), _("文字框中存在格式錯誤，請檢查：\n") + "\n".join(conf_curr))
             
         out_folder = c.get("s_folder_out", "改完的文件")
-        target_hash = c.get("t13_gate_hash", "a589d3b5") # 🛡️ 修復遺失的 target_hash 參數
+        backup_folder = c.get("s_folder_backup", "文件備份")
+        target_hash = c.get("t13_gate_hash", "22817d01")
+        
         self.app.execute_task(self.btn_run, _("獨立儲存白名單中"), MDEngine.task_locate_and_write_overframe, 
-            (src_dir, out_root, out_folder, rec_curr, {}, target_hash), 
-            lambda ct, hash_name: [self._render_gate(os.path.join(out_root, out_folder, hash_name)), _("✨ 獨立儲存成功！共保留 {count} 筆。\n已將 `{hash}` 存放在：\n{folder}").format(count=ct, hash=hash_name, folder=out_folder)][1])
+            (src_dir, out_root, out_folder, backup_folder, rec_curr, {}, target_hash), 
+            lambda ct, hash_name: [self._render_gate(os.path.join(out_root, out_folder, hash_name)), _("獨立儲存成功！共保留 {count} 筆。\n已將 `{hash}` 存放在：\n{folder}").format(count=ct, hash=hash_name, folder=out_folder)][1])
 
     def merge_gate(self):
         c = self.config
@@ -4813,7 +5108,6 @@ class TabOverFrame(BaseTab):
         if merge_conf:
             return QMessageBox.critical(self, _("合併失敗"), _("🚨 偵測到「同項目指向不同目標」的衝突，為保護檔案已中斷合併：\n\n") + "\n\n".join(merge_conf))
 
-        # 🛡️ 呼叫共用的大腦來處理格式，完美解決分隔線錯誤的問題
         self.txt_existing.setPlainText(self._get_rendered_gate_text(curr_records))
         QMessageBox.information(self, _("合併成功"), _("外部設定已合併至上方的編輯框中！請點擊「儲存現有白名單」來完成寫入。"))
 
@@ -4834,21 +5128,21 @@ class TabOverFrame(BaseTab):
             return QMessageBox.critical(self, _("語法錯誤"), _("輸入框中存在格式錯誤，請檢查。"))
             
         out_folder = c.get("s_folder_out", "改完的文件")
+        backup_folder = c.get("s_folder_backup", "文件備份")
+        
         def finish_handler(ct, hash_name):
             self.txt_new.clear()
             self._render_gate(os.path.join(out_root, out_folder, hash_name))
             msg = _("✨ 輸出成功！共寫入 {count} 筆。\n已將 `{hash}` 存放在：\n{folder}").format(count=ct, hash=hash_name, folder=out_folder)
             
-            # 檢查是否帶有回跳旗標
             if getattr(self, '_return_to_tab4', False):
                 self._return_to_tab4 = False
                 QTimer.singleShot(100, lambda: self.app.select_tab("t4_replace"))
             return msg
 
-        # 🛡️ 智慧動態對齊：寫入時同樣取得設定檔中儲存的正確新 Hash 進行輸出
-        target_hash = c.get("t13_gate_hash", "a589d3b5")
+        target_hash = c.get("t13_gate_hash", "22817d01")
         self.app.execute_task(self.btn_run, _("註冊與輸出中"), MDEngine.task_locate_and_write_overframe, 
-            (src_dir, out_root, out_folder, rec_curr, rec_new, target_hash), finish_handler)
+            (src_dir, out_root, out_folder, backup_folder, rec_curr, rec_new, target_hash), finish_handler)
         
     def clear_history(self):
         history_file = os.path.join(MDEngine.TEMP_DIR, "of_card_asset_backups", "registered_history.json")
@@ -5275,20 +5569,27 @@ class MDToolBoxApp(QMainWindow):
         btns = btn if isinstance(btn, (list, tuple)) else ([btn] if btn else [])
         for b in btns:
             if b: b.setEnabled(False)
-        self.status_lbl.setText(_("{message}... (處理中)").format(message=msg))
+            
+        self.status_lbl.setText(_("{message}... (準備啟動)").format(message=msg))
+        self.pbar.setRange(0, 0) # 維持 0,0 走馬燈模式，確保沒有明確總量時也不會視覺凍結
         self.pbar.show()
         
         worker = TaskWorker(func, args)
         self._active_workers = getattr(self, '_active_workers', set())
         self._active_workers.add(worker)
         
-        worker.signals.progress.connect(lambda c: self.status_lbl.setText(_("{message}... (已處理: {count} 筆)").format(message=msg, count=c)))
+        # 🛡️ 解耦設計：底層只傳遞純數字(count)，由 UI 負責多語言字串的合成與替換
+        def update_progress(count):
+            self.status_lbl.setText(_("{message}... (進度: {count})").format(message=msg, count=count))
+            
+        worker.signals.progress.connect(update_progress)
         
         def finish(s, c, e):
             self._active_workers.discard(worker)
             self.pbar.hide()
             for b in btns:
-                if b: b.setEnabled(True) # 👈 一併喚醒
+                if b: b.setEnabled(True)
+                
             self.status_lbl.setText(_("狀態：任務完成！") if s else _("狀態：發生錯誤已停止。"))
             if is_chain:
                 if callable(succ_msg_cb): succ_msg_cb(s, c, e)
