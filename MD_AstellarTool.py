@@ -4066,8 +4066,14 @@ class MDEngine:
             if not best_path:
                 return finish_cb(False, _("在來源資料夾中找不到任何 of_card_asset 註冊表！"), None)
 
-            # 步驟 3：呼叫核心，傳入找到的最新 Hash 與過濾好的 user_diff
-            MDEngine.task_locate_and_write_overframe(src_dir, out_root, out_folder, backup_folder, user_diff, {}, best_hash, progress_cb, finish_cb)
+            # 🛡️ 步驟 3：於修復函式內完成 new_official + user_diff 的增量組合
+            new_official_records = MDEngine.read_overframe_bytes(best_path)
+            combined_records = dict(new_official_records)
+            for t, b in user_diff.items():
+                combined_records[t] = b
+
+            # 步驟 4：呼叫核心，傳入找到的最新 Hash 與組合好的清單
+            MDEngine.task_locate_and_write_overframe(src_dir, out_root, out_folder, backup_folder, combined_records, {}, best_hash, progress_cb, finish_cb)
         except Exception as e:
             finish_cb(False, str(e), traceback.format_exc())
 
@@ -4083,33 +4089,49 @@ class MDEngine:
             backup_dir = os.path.join(MDEngine.TEMP_DIR, "of_card_asset_backups")
             os.makedirs(backup_dir, exist_ok=True)
             
-            # --- 步驟 1：萃取使用者變更 (防止舊官方資料污染) ---
+            # 🛡️ 前置作業：淨化傳入的路徑，徹底剝離雙引號
+            target_hash = clean_path(target_hash)
+            
+            # 🛡️ 純檔名萃取防護：防止絕對路徑穿透，保護輸出沙盒
+            target_filename = os.path.basename(target_hash)
+            
+            # --- 步驟 1：萃取使用者變更 (因應歷史紀錄 json 的純差量儲存需求) ---
             user_diff = dict(rec_curr)
-            old_pristine_file = os.path.join(backup_dir, f"{target_hash}.pristine")
+            old_pristine_file = os.path.join(backup_dir, f"{target_filename}.pristine")
             if os.path.exists(old_pristine_file):
                 old_pristine_records = MDEngine.read_overframe_bytes(old_pristine_file)
                 user_diff = MDEngine._calculate_user_diff(rec_curr, old_pristine_records)
 
             # --- 步驟 2：檢索遊戲原檔 ---
+            # 🛡️ 順位 1：標準路徑
             gate_path = MDEngine.get_actual_bundle_path(src_dir, target_hash)
             if not os.path.exists(gate_path): 
                 gate_path = MDEngine.get_actual_source_path(src_dir, target_hash, "StreamingAssets")
+            is_valid = MDEngine.validate_gate_file(gate_path)
             
-            if not os.path.exists(gate_path):
+            # 🛡️ 順位 2：使用者絕對路徑
+            if not is_valid and os.path.isabs(target_hash) and os.path.isfile(target_hash):
+                if MDEngine.validate_gate_file(target_hash):
+                    gate_path = target_hash
+                    is_valid = True
+
+            # 🛡️ 順位 3：爆搜 / 報錯
+            if not is_valid:
                 found_path, found_hash = MDEngine._search_gate_bundle_core(src_dir, [out_root, MDEngine.TEMP_DIR], "FAST", progress_cb)
                 if not found_path:
                     return finish_cb(False, _("在來源資料夾中找不到 of_card_asset 註冊表！"), None)
                 gate_path, target_hash = found_path, found_hash
+                target_filename = os.path.basename(target_hash) # 重新提取檔名
 
             # --- 步驟 3：全新純淨原檔備份 ---
-            new_pristine_file = os.path.join(backup_dir, f"{target_hash}.pristine")
+            new_pristine_file = os.path.join(backup_dir, f"{target_filename}.pristine")
             if os.path.exists(gate_path):
                 if not os.path.exists(new_pristine_file):
                     shutil.copy2(gate_path, new_pristine_file)
                 if backup_folder:
                     user_backup_dir = os.path.join(out_root, backup_folder)
                     os.makedirs(user_backup_dir, exist_ok=True)
-                    user_backup_file = os.path.join(user_backup_dir, target_hash)
+                    user_backup_file = os.path.join(user_backup_dir, target_filename)
                     if not os.path.exists(user_backup_file):
                         shutil.copy2(gate_path, user_backup_file)
 
@@ -4119,18 +4141,21 @@ class MDEngine:
             if os.path.exists(read_target):
                 official_records = MDEngine.read_overframe_bytes(read_target)
 
-            # --- 步驟 5：增量融合與衝突檢測 ---
-            merged_records = dict(official_records)
-            for t, b in user_diff.items():
+            # --- 步驟 5：增量融合與衝突檢測 (🛡️ 還原為所見即所得直接寫入) ---
+            merged_records = dict(rec_curr)
+            for t, b in rec_new.items():
                 merged_records[t] = b
+                
+            # 🛡️ 空白防呆保護：若清單完全為空，退回使用官方基底，防範壞檔
+            if not merged_records:
+                merged_records = dict(official_records)
 
             conflicts = []
             for t, b in rec_new.items():
-                if t in merged_records and merged_records[t] != b:
-                    conf_type = _("【官方保留佔位符衝突】") if (b == t and merged_records[t] == 0) else _("【同項目指向不同目標】")
-                    conf_msg = _("❌ 衝突類型：{ctype}\n   - 衝突項目 ID：[{t}]\n   - 現有/官方指向：[{curr}]\n   - 您的新註冊指向：[{new_b}]\n   👉 解決建議：若為官方佔位符(指向0)，請勿對其進行註冊；若為手動覆寫，請確認是否要刪除舊有指向。").format(ctype=conf_type, t=t, curr=merged_records[t], new_b=b)
+                if t in rec_curr and rec_curr[t] != b:
+                    conf_type = _("【官方保留佔位符衝突】") if (b == t and rec_curr[t] == 0) else _("【同項目指向不同目標】")
+                    conf_msg = _("❌ 衝突類型：{ctype}\n   - 衝突項目 ID：[{t}]\n   - 現有/官方指向：[{curr}]\n   - 您的新註冊指向：[{new_b}]\n   👉 解決建議：若為官方佔位符(指向0)，請勿對其進行註冊；若為手動覆寫，請確認是否要刪除舊有指向。").format(ctype=conf_type, t=t, curr=rec_curr[t], new_b=b)
                     conflicts.append(conf_msg)
-                merged_records[t] = b
 
             if conflicts: 
                 return finish_cb(False, _("🚨 偵測到註冊表合併衝突，為保護檔案結構，已中斷寫入：\n\n") + "\n\n".join(conflicts), None)
@@ -4155,7 +4180,7 @@ class MDEngine:
                             
                             out_dir = os.path.join(out_root, out_folder)
                             os.makedirs(out_dir, exist_ok=True)
-                            final_path = os.path.join(out_dir, target_hash)
+                            final_path = os.path.join(out_dir, target_filename)
                             
                             try:
                                 MDEngine.safe_write_bytes(final_path, env.file.save()) # 🛡️ 套用原子化寫入
@@ -4193,7 +4218,7 @@ class MDEngine:
                     json.dump(hist, f_hist_out, indent=4)
             except Exception: pass
 
-            finish_cb(True, len(merged_records), target_hash)
+            finish_cb(True, len(merged_records), target_filename)
         except Exception as e:
             finish_cb(False, str(e), traceback.format_exc())
 
@@ -4220,8 +4245,14 @@ class MDEngine:
             best_path, best_hash = MDEngine._search_gate_bundle_core(src_dir, [out_root, MDEngine.TEMP_DIR], "LATEST", progress_cb)
             if not best_path: return finish_cb(False, _("在來源資料夾中找不到任何 of_card_asset 註冊表！"), None)
 
-            # 步驟 3：呼叫核心，傳入找到的最新 Hash 與過濾好的 user_diff
-            MDEngine.task_locate_and_write_overframe(src_dir, out_root, out_folder, backup_folder, user_diff, {}, best_hash, progress_cb, finish_cb)
+            # 🛡️ 步驟 3：於修復函式內完成 new_official + user_diff 的增量組合
+            new_official_records = MDEngine.read_overframe_bytes(best_path)
+            combined_records = dict(new_official_records)
+            for t, b in user_diff.items():
+                combined_records[t] = b
+
+            # 步驟 4：呼叫核心，傳入找到的最新 Hash 與組合好的清單
+            MDEngine.task_locate_and_write_overframe(src_dir, out_root, out_folder, backup_folder, combined_records, {}, best_hash, progress_cb, finish_cb)
         except Exception as e:
             finish_cb(False, str(e), traceback.format_exc())
 
@@ -6814,7 +6845,7 @@ class TabOverFrame(BaseTab):
     def load_gate(self):
         c = self.config
         src_dir = clean_path(c.get("t13_src_dir"))
-        current_hash = c.get("t13_gate_hash", "22817d01")
+        current_hash = clean_path(c.get("t13_gate_hash", "22817d01"))
         
         gate_path = MDEngine.get_actual_bundle_path(src_dir, current_hash)
         if not os.path.exists(gate_path):
@@ -6822,6 +6853,12 @@ class TabOverFrame(BaseTab):
             
         is_valid = MDEngine.validate_gate_file(gate_path)
             
+        # 🛡️ 順位 2：檢查使用者輸入是否為絕對路徑
+        if not is_valid and os.path.isabs(current_hash) and os.path.isfile(current_hash):
+            if MDEngine.validate_gate_file(current_hash):
+                gate_path = current_hash
+                is_valid = True
+
         if not is_valid:
             out_root = clean_path(c.get("t13_out_dir"))
             out_folder = c.get("s_folder_out", "改完的文件")
@@ -6845,8 +6882,9 @@ class TabOverFrame(BaseTab):
 
     def _get_rendered_gate_text(self, records):
         c = self.config
-        target_hash = c.get("t13_gate_hash", "22817d01")
-        pristine_path = os.path.join(MDEngine.TEMP_DIR, "of_card_asset_backups", f"{target_hash}.pristine")
+        target_hash = clean_path(c.get("t13_gate_hash", "22817d01"))
+        clean_hash = os.path.basename(target_hash)
+        pristine_path = os.path.join(MDEngine.TEMP_DIR, "of_card_asset_backups", f"{clean_hash}.pristine")
         name_map = MDEngine.get_id_to_name_map(clean_path(c.get("t13_csv_dir")), c.get("search_lang", "zh-tw"))
         
         separator = _("\n\n# ===以上為原始檔案內容，建議不要修改===")
@@ -6873,8 +6911,9 @@ class TabOverFrame(BaseTab):
         self.app.status_lbl.setText(_("狀態：遊戲現有白名單已成功載入！"))
 
     def clear_cache(self):
-        target_hash = self.config.get("t13_gate_hash", "22817d01")
-        pristine_path = os.path.join(MDEngine.TEMP_DIR, "of_card_asset_backups", f"{target_hash}.pristine")
+        target_hash = clean_path(self.config.get("t13_gate_hash", "22817d01"))
+        clean_hash = os.path.basename(target_hash)
+        pristine_path = os.path.join(MDEngine.TEMP_DIR, "of_card_asset_backups", f"{clean_hash}.pristine")
         if not os.path.exists(pristine_path):
             return QMessageBox.information(self, _("提示"), _("目前不存在任何快取基準檔案，不需清除！"))
             
