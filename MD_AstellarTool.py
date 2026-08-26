@@ -10,7 +10,7 @@ License: MIT License
 
 [ 免費與防詐騙聲明 / Free Tool & Refund Disclaimer ]
 1. 本程式為完全免費且開源之工具，僅供技術交流與個人研究使用。
-2. 本程式嚴禁任何形式的商業轉售、打包販售或變相收費。
+2. 本程式嚴禁任何形式的商業轉售、打包販售或變相收費。   
 3. 若您是付費才取得本程式，您已被詐騙！請立即向賣家或平台申請退款並檢舉該商家。
    (This tool is 100% FREE and Open Source. If you paid for this software, 
     you have been scammed! Please request a refund immediately.)
@@ -586,15 +586,24 @@ class MDEngine:
 
     @staticmethod
     def get_csv_indices(header):
-        """集中式 CSV 索引解析器 (徹底消滅硬編碼與迴圈)"""
+        """集中式 CSV 索引解析器 (支援中英雙語及模糊標頭匹配)"""
         h_lower = [str(c).strip().lower() for c in header]
+        
+        def find_idx(candidates):
+            for cand in candidates:
+                cand_lower = cand.lower()
+                for i, col in enumerate(h_lower):
+                    if col == cand_lower or col.startswith(cand_lower) or f"({cand_lower})" in col:
+                        return i
+            return -1
+
         return {
-            "folder": h_lower.index(MDEngine.CSV_HEADER_FOLDER.lower()) if MDEngine.CSV_HEADER_FOLDER.lower() in h_lower else -1,
-            "container": h_lower.index(MDEngine.CSV_HEADER_CONTAINER.lower()) if MDEngine.CSV_HEADER_CONTAINER.lower() in h_lower else -1,
-            "type": h_lower.index(MDEngine.CSV_HEADER_TYPE.lower()) if MDEngine.CSV_HEADER_TYPE.lower() in h_lower else -1,
-            "subtype": h_lower.index(MDEngine.CSV_HEADER_SUBTYPE.lower()) if MDEngine.CSV_HEADER_SUBTYPE.lower() in h_lower else -1,
-            "hash": h_lower.index(MDEngine.CSV_HEADER_FILE_ID.lower()) if MDEngine.CSV_HEADER_FILE_ID.lower() in h_lower else -1,
-            "id": h_lower.index(MDEngine.CSV_HEADER_ITEM_ID.lower()) if MDEngine.CSV_HEADER_ITEM_ID.lower() in h_lower else -1
+            "folder": find_idx([MDEngine.CSV_HEADER_FOLDER, "folder", "目錄", "資料夾"]),
+            "container": find_idx([MDEngine.CSV_HEADER_CONTAINER, "container", "容器"]),
+            "type": find_idx([MDEngine.CSV_HEADER_TYPE, "type", "種類", "卡片種類"]),
+            "subtype": find_idx([MDEngine.CSV_HEADER_SUBTYPE, "subtype", "子種類", "子卡片種類"]),
+            "hash": find_idx([MDEngine.CSV_HEADER_FILE_ID, "file id", "hash", "檔名"]),
+            "id": find_idx([MDEngine.CSV_HEADER_ITEM_ID, "item id", "card id", "id", "編號"])
         }
 
     @staticmethod
@@ -1296,76 +1305,98 @@ class MDEngine:
             if k != default_key and MDEngine.try_decompress(MDEngine.decrypt_file_bytes(raw_bytes, k)) is not None: return k
         return None
     
+    # === 依據研究報告建構的全域 6-bit 字典 (0x00 ~ 0x3F) ===
+    CARD_TYPE_MAP = {
+        0x00: ("怪獸", "通常"), 
+        0x01: ("怪獸", "效果"), 
+        0x02: ("怪獸", "融合=非效果"), 
+        0x03: ("怪獸", "融合=效果"),
+        0x04: ("怪獸", "儀式=非效果"),
+        0x05: ("怪獸", "儀式=效果"), 
+        0x06: ("怪獸", "效果=卡通"), 
+        0x07: ("怪獸", "效果=靈魂"), 
+        0x08: ("怪獸", "效果=聯合"),
+        0x09: ("怪獸", "效果=二重"), 
+        0x0A: ("怪獸", "衍生物"), 
+        0x0F: ("怪獸", "通常=協調"), 
+        0x10: ("怪獸", "效果=協調"),
+        0x11: ("怪獸", "同步=非效果"), 
+        0x12: ("怪獸", "同步=效果"), 
+        0x13: ("怪獸", "同步=協調"), 
+        0x16: ("怪獸", "超量=非效果"),
+        0x17: ("怪獸", "超量=效果"), 
+        0x18: ("怪獸", "效果=反轉"), 
+        0x19: ("怪獸", "通常=靈擺"), 
+        0x1A: ("怪獸", "效果=靈擺"),
+        0x1B: ("怪獸", "效果=特殊召喚"), 
+        0x1C: ("怪獸", "效果=特殊召喚=卡通"),
+        0x1D: ("怪獸", "效果=特殊召喚=靈魂"),
+        0x1E: ("怪獸", "效果=特殊召喚=協調"),
+        0x20: ("怪獸", "效果=反轉=協調"),
+        0x21: ("怪獸", "效果=靈擺=協調"),
+        0x22: ("怪獸", "超量=靈擺"), 
+        0x23: ("怪獸", "效果=靈擺=反轉"), 
+        0x24: ("怪獸", "同步=靈擺"), 
+        0x25: ("怪獸", "效果=聯合=協調"),
+        0x26: ("怪獸", "儀式=靈魂"),
+        0x27: ("怪獸", "融合=協調"), 
+        0x28: ("怪獸", "效果=靈擺=特殊召喚"), 
+        0x29: ("怪獸", "融合=靈擺"), 
+        0x2A: ("怪獸", "連結=非效果"),
+        0x2B: ("怪獸", "連結=效果"), 
+        0x2C: ("怪獸", "通常=靈擺=協調"), 
+        0x2D: ("怪獸", "效果=靈擺=靈魂"), 
+        0x2F: ("怪獸", "儀式=協調"),
+        0x30: ("怪獸", "融合=協調"), 
+        0x31: ("怪獸", "衍生物=協調"), 
+        0x34: ("怪獸", "儀式=靈擺"),
+        0x35: ("怪獸", "儀式=反轉")
+    }
+
+    SPELL_SUBTYPE_MAP = {0x00: "通常", 0x08: "場地", 0x0C: "裝備", 0x10: "永續", 0x14: "速攻", 0x18: "儀式"}
+    TRAP_SUBTYPE_MAP = {0x00: "通常", 0x04: "反制", 0x10: "永續"}
+
     @staticmethod
     def parse_card_properties(prop_bytes, i, desc=""):
         """
-        🛡️ 混血雙軌精準屬性解析器：結合靈擺文本防線與 6-bit 物理遮罩
-        （已根據深度研究白皮書，收斂所有特殊召喚與協調變異位元）
+        🚀 全域統一枚舉模型：極致 O(1) 查表法，具備智能保底防線
         """
         props = {k: "None" for k in PROP_HEADERS}
         try:
             offset = i * 8
             if offset + 8 > len(prop_bytes): return props
             
-            raw_chunk = prop_bytes[offset : offset + 8]
-            b2, b3, b6 = raw_chunk[2], raw_chunk[3], raw_chunk[6]
-            val_1 = (b3 << 8) | b2 
+            chunk = prop_bytes[offset : offset + 8]
+            cid = struct.unpack('<H', chunk[0:2])[0]
             
-            # 1. 魔法與陷阱物理防線 (100% 精準)
-            if val_1 == 0x020D:
+            # 階段一：例外攔截器 (紅葉的女王資料悖論防禦)
+            if cid == 4644:
+                props["Type"] = "怪獸"
+                props["SubType"] = "融合=非效果"
+                return props
+                
+            b2, b6 = chunk[2], chunk[6]
+            b_clean = b2 & 0x3F  # 剝離高位元雜訊
+            
+            # 階段二：全域統一枚舉查找
+            if b_clean == 0x0D:
                 props["Type"] = "魔法"
-                st_map = {0x00: "通常", 0x04: "反制", 0x08: "場地", 0x0C: "裝備", 0x10: "永續", 0x14: "速攻", 0x18: "儀式"}
-                props["SubType"] = st_map.get(b6, "通常")
-                return props
-                
-            elif val_1 == 0x024E:
+                props["SubType"] = MDEngine.SPELL_SUBTYPE_MAP.get(b6, "通常")
+            elif b_clean == 0x0E:
                 props["Type"] = "陷阱"
-                st_map = {0x00: "通常", 0x04: "反制", 0x08: "場地", 0x0C: "裝備", 0x10: "永續"}
-                props["SubType"] = st_map.get(b6, "通常")
-                return props
-                
-            # 2. 怪獸防線
-            props["Type"] = "怪獸"
-            
-            # 取得剔除干擾蓋章後的純淨 6-bit ID
-            b_clean = b2 & 0x3F 
-            
-            # DRY：集中定義靈擺的物理特徵碼對應表
-            pendulum_byte_map = {
-                0x19: "通常=靈擺",
-                0x1A: "效果=靈擺", 0x21: "效果=靈擺",
-                0x22: "超量=靈擺",
-                0x24: "同步=靈擺",
-                0x29: "融合=靈擺",
-                0x34: "儀式=靈擺"
-            }
-            
-            # 第一防線：效果文是否包含靈擺關鍵字 (主指標 - 語義判定)
-            is_text_pendulum = any(kw in desc for kw in PENDULUM_KEYWORDS)
-            
-            # 第二防線：二進位 6-bit 物理遮罩是否命中靈擺特徵 (副指標 - 物理判定)
-            is_byte_pendulum = b_clean in pendulum_byte_map
-            
-            # ✨ 雙軌放行 (邏輯 OR)：只要「有寫靈擺文字」或「物理二進位是靈擺」，任一符合就直接給過
-            if is_text_pendulum or is_byte_pendulum:
-                # 若物理特徵碼有明確對應(如超量、同步)則精準賦予，否則預設給 "效果=靈擺"
-                props["SubType"] = pendulum_byte_map.get(b_clean, "效果=靈擺")
+                props["SubType"] = MDEngine.TRAP_SUBTYPE_MAP.get(b6, "通常")
+            elif b_clean in MDEngine.CARD_TYPE_MAP:
+                props["Type"], props["SubType"] = MDEngine.CARD_TYPE_MAP[b_clean]
             else:
-                # 兩道防線皆未命中，進入純粹的常規怪獸判定
-                if b_clean in {0x00, 0x0F}: props["SubType"] = "通常"
-                elif b_clean in {0x01, 0x06, 0x08, 0x09, 0x10, 0x18, 0x1B}: props["SubType"] = "效果"
-                elif b_clean in {0x02, 0x03}: props["SubType"] = "融合"
-                elif b_clean in {0x11, 0x12, 0x13}: props["SubType"] = "同步"
-                elif b_clean in {0x16, 0x17}: props["SubType"] = "超量"
-                elif b_clean == 0x05: props["SubType"] = "儀式"
-                elif b_clean in {0x2A, 0x2B}: props["SubType"] = "連結"
-                elif b_clean in {0x0A, 0x0D, 0x31}: props["SubType"] = "衍生物"
-                else: props["SubType"] = "效果"
+                # 🛡️ 智能保底防線：若未來遇到極罕見的未收錄卡片，自動安全降級為效果怪獸，絕不中斷流程
+                props["Type"] = "怪獸"
+                props["SubType"] = "效果"
+                props["Raw_Data"] = f"Uncatalogued b_clean: {hex(b_clean)}"
                 
-        except Exception:
+        except Exception as e:
             props["Type"] = "例外"
             props["SubType"] = "例外"
-            props["Raw_Data"] = "Exception Parsing"
+            props["Raw_Data"] = str(e)
             
         return props
 
@@ -2542,9 +2573,15 @@ class MDEngine:
                 env = UnityPy.load(filepath)
                 for container_path, obj in env.container.items():
                     path_lower = str(container_path).lower()
-                    if f"/{lang}/" in path_lower or f"_{lang}" in path_lower or "ids_item" in path_lower:
-                        filename_lower = path_lower.split('/')[-1]
-                        if filename_lower in target_files:
+                    filename_lower = path_lower.split('/')[-1]
+                    
+                    if filename_lower in target_files:
+                        # 語系相依檔案 (名稱、效果、索引)
+                        if filename_lower in ("card_name.bytes", "card_desc.bytes", "card_indx.bytes"):
+                            if f"/{lang}/" in path_lower or f"_{lang}" in path_lower:
+                                found[filename_lower] = filepath
+                        else:
+                            # 全域屬性檔案 (card_prop.bytes) 與物品字典 (ids_item.bytes)
                             found[filename_lower] = filepath
             except Exception: pass
             finally:    # 👈 新增 finally 區塊
