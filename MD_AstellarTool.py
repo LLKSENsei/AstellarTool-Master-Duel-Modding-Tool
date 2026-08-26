@@ -19,7 +19,7 @@ License: MIT License
 
 __author__ = "LonelyMaJo"
 __license__ = "MIT"
-__version__ = "1.3.0"
+__version__ = "1.5.0"
 __url__ = "https://www.pixiv.net/users/126514098"
 
 import os
@@ -180,7 +180,16 @@ class ConfigManager:
             "t8_csv_dir": "", "t8_root_dir": "", "t8_mod_dir": "", "t8_padding_pct": "25", "t8_enable_backup": True, "t8_backup_folder": "修改前原檔",
             "t8_op_periframe": 1.0, "t8_op_namebox": 1.0, "t8_op_artframe": 1.0, "t8_op_effframe": 1.0, "t8_op_effbox": 1.0, "t8_op_background": 1.0,
             "t8_cutin_src": "", "t8_cutin_id": "",
-            "c_hd_res": "HD 1280x720", "c_fill_mode": "裁切滿版 (Crop Fill)",
+            "t8_adv_ch_x": 0, "t8_adv_ch_y": 0, "t8_adv_ch_s": 100, "t8_adv_ch_rot": 0,
+            "t8_adv_bg_x": 0, "t8_adv_bg_y": 0, "t8_adv_bg_s": 100, "t8_adv_bg_rot": 0, "t8_adv_bg_color": "#FF000000",
+            "t8_adv_z_order": ["CH_LAYER", "PeriFrame", "NameBox", "EffFrame", "ArtFrame", "EffBox", "BackGround", "BG_LAYER"],
+            "t8_foil_palette": "PALETTE_OPAL", "t8_foil_base_light": 60, "t8_foil_sharpness": 20, "t8_foil_blend_mode": "BLEND_SOFT",
+            "t8_foil_intensity": 200, "t8_foil_saturation": 130, "t8_foil_frequency": 5.0, "t8_foil_angle": 60, "t8_foil_bake_enable": False,
+            "t8_foil_prev_PeriFrame": True, "t8_foil_prev_NameBox": False, "t8_foil_prev_ArtFrame": True, "t8_foil_prev_EffFrame": True, "t8_foil_prev_EffBox": False, "t8_foil_prev_BackGround": False,
+            "t8_foil_bake_PeriFrame": False, "t8_foil_bake_NameBox": False, "t8_foil_bake_ArtFrame": False, "t8_foil_bake_EffFrame": False, "t8_foil_bake_EffBox": False, "t8_foil_bake_BackGround": False,
+            "t8_adv_mask_PeriFrame": True, "t8_adv_mask_NameBox": False, "t8_adv_mask_ArtFrame": True, "t8_adv_mask_EffFrame": True, "t8_adv_mask_EffBox": False, "t8_adv_mask_BackGround": False,
+            "t8_adv_foil_sim": False,
+            "c_hd_res": "HD 1280x720", "c_fill_mode": "Crop",
             "c_start_time": 0.0, "c_duration": 3.0, "c_fps": 30, "c_speed": 1.0,
             "c_rot": 0, "c_offset_x": 0, "c_offset_y": 0,
             "c_chroma_en": True, "c_despill_en": False, "c_chroma_color": "#00FF00", "c_chroma_tol": 15, "c_chroma_feather": 0, "c_chroma_despill": 50,
@@ -808,8 +817,8 @@ class MDEngine:
             
             indices = MDEngine.get_csv_indices(header)
             f_idx, c_idx, h_idx, id_idx = indices["folder"], indices["container"], indices["hash"], indices["id"]
+            t_idx, st_idx = indices["type"], indices["subtype"] # 👈 提取 Type 與 SubType 欄位索引
             
-            # 🛡️ 安全防禦：如果找不到關鍵英文標頭，拒絕讀取並報錯
             if h_idx == -1 or id_idx == -1:
                 raise Exception(_("偵測到不相容的舊版 CSV 格式！請至分頁 1 重新掃描並生成對照表。"))
                 
@@ -818,11 +827,21 @@ class MDEngine:
                     c_id, h_name = row[id_idx].strip(), row[h_idx].strip()
                     folder = row[f_idx].strip() if f_idx != -1 and len(row) > f_idx else "0000"
                     container = row[c_idx].strip() if c_idx != -1 and len(row) > c_idx else "Common"
+                    
+                    # 👈 解析卡片真實的 Type 與 SubType
+                    c_type = row[t_idx].strip() if t_idx != -1 and len(row) > t_idx else "None"
+                    c_subtype = row[st_idx].strip() if st_idx != -1 and len(row) > st_idx else "None"
+                    
                     if c_id and h_name:
                         mapping.setdefault(c_id, []).append({'folder': folder or "0000", 'container': container, 'hash': h_name})
                         if c_id not in db_dict: 
-                            # 🛡️ 儲存整列(row)與標頭(header)供搜尋與擴充動態使用
-                            db_dict[c_id] = {'id': c_id, 'hash': h_name, 'header': header, 'full_row': row}
+                            db_dict[c_id] = {
+                                'id': c_id, 
+                                'hash': h_name, 
+                                'header': header, 
+                                'full_row': row,
+                                'properties': {'Type': c_type, 'SubType': c_subtype} # 👈 補齊 properties！
+                            }
         db = list(db_dict.values())
         MDEngine._csv_cache[csv_path] = (mtime, mapping, db)
         return mapping, db
@@ -1050,6 +1069,172 @@ class MDEngine:
         return final_list
 
     @staticmethod
+    def _fuzzy_match(query, text, threshold=0.75):
+        if not query or not text: return 0.0
+        if len(query) >= len(text):
+            return difflib.SequenceMatcher(None, query, text).ratio()
+        max_ratio = 0.0
+        win_size = len(query)
+        for i in range(len(text) - win_size + 1):
+            ratio = difflib.SequenceMatcher(None, query, text[i:i+win_size]).ratio()
+            if ratio > max_ratio: max_ratio = ratio
+        return max_ratio
+
+    @staticmethod
+    def search_cards_advanced(params, database, search_lang="zh-tw", current_page=1):
+        if not database: return [], 0, 0, 1, []
+        
+        import unicodedata
+        query = params.get("query", "")
+        visual_only = params.get("visual_only", False)
+        inc_str = params.get("inc_words", "")
+        exc_str = params.get("exc_words", "")
+        f_name = params.get("fuzzy_name", False)
+        f_desc = params.get("fuzzy_desc", False)
+        limit_per_page = params.get("limit_per_page", 200)
+        filters = params.get("filters", {})
+        
+        # --- 軌道 1：標準精確同化 ---
+        norm_q = unicodedata.normalize('NFKC', query).strip().lower()
+        norm_q = re.sub(r'[「」“”《》『』]', '"', norm_q)
+        norm_q = norm_q.replace('－', '-').replace('／', '/').replace('～', '~').replace('・', '.')
+        
+        # --- 分詞器 (Tokenizer) ---
+        includes = set([w.strip().lower() for w in inc_str.split() if w.strip()])
+        excludes = set([w.strip().lower() for w in exc_str.split() if w.strip()])
+        phrases = set()
+        
+        for m in re.finditer(r'"([^"]+)"', norm_q): phrases.add(m.group(1))
+        norm_q = re.sub(r'"([^"]+)"', '', norm_q)
+        
+        for m in re.finditer(r'(?:^|\s)-([^\s]+)', norm_q): excludes.add(m.group(1))
+        norm_q = re.sub(r'(?:^|\s)-([^\s]+)', '', norm_q)
+        
+        for m in re.finditer(r'(?:^|\s)\+([^\s]+)', norm_q): includes.add(m.group(1))
+        norm_q = re.sub(r'(?:^|\s)\+([^\s]+)', '', norm_q)
+        
+        normal_terms = [w for w in norm_q.split() if w and w != '-']
+        
+        all_terms = normal_terms + list(phrases)
+        full_query_stripped = re.sub(r'[\W_]+', '', "".join(all_terms)) # 軌道 2：完全脫水
+        
+        results = []
+        
+        # 矩陣判定開關提取
+        chk_m_en = filters.get("怪獸", {}).get("enabled", False)
+        chk_s_en = filters.get("魔法", {}).get("enabled", False)
+        chk_t_en = filters.get("陷阱", {}).get("enabled", False)
+        all_unrestricted = not (chk_m_en or chk_s_en or chk_t_en)
+        
+        for card in database:
+            cid = str(card['id'])
+            chash = str(card['hash'])
+            header, row = card.get('header', []), card.get('full_row', [])
+            
+            n_idx = MDEngine.find_lang_column_index(header, search_lang, "Name")
+            d_idx = MDEngine.find_lang_column_index(header, search_lang, "Desc")
+            
+            raw_name = row[n_idx] if n_idx != -1 and len(row) > n_idx else ""
+            raw_desc = row[d_idx] if d_idx != -1 and len(row) > d_idx else ""
+            
+            props = card.get("properties", {})
+            c_type = props.get("Type", "None")
+            c_subtype = props.get("SubType", "None")
+            
+            # --- 1. 直通判定 (Pass-Through) ---
+            is_passthrough = False
+            if query:
+                q_clean = query.strip().lower()
+                if q_clean == cid.lower() or q_clean == chash.lower(): is_passthrough = True
+                # ✨ 修正：涵蓋檢查 cid, chash 與卡名
+                elif MDEngine.is_visual_asset(q_clean) and (q_clean in cid.lower() or q_clean in chash.lower() or q_clean in raw_name.lower()): is_passthrough = True
+            
+            # --- 2. 視覺配件篩選 ---
+            if visual_only and not MDEngine.is_visual_asset(cid): continue
+            
+            # --- 3. 矩陣式 Type/SubType 篩選 ---
+            if not is_passthrough and not all_unrestricted:
+                type_match = False
+                if c_type == "怪獸" and chk_m_en:
+                    m_subs = filters["怪獸"]["subs"]
+                    pen_en = filters["怪獸"]["pendulum"]
+                    is_pen_card = "靈擺" in c_subtype
+                    
+                    if not m_subs and not pen_en: type_match = True
+                    elif not m_subs and pen_en and is_pen_card: type_match = True
+                    elif m_subs:
+                        base_match = any(sub in c_subtype for sub in m_subs)
+                        if pen_en: type_match = base_match and is_pen_card
+                        else: type_match = base_match
+                
+                elif c_type == "魔法" and chk_s_en:
+                    s_subs = filters["魔法"]["subs"]
+                    if not s_subs: type_match = True
+                    elif any(sub in c_subtype for sub in s_subs): type_match = True
+                
+                elif c_type == "陷阱" and chk_t_en:
+                    t_subs = filters["陷阱"]["subs"]
+                    if not t_subs: type_match = True
+                    elif any(sub in c_subtype for sub in t_subs): type_match = True
+                    
+                if not type_match: continue
+                
+            # 同化準備
+            s_name = unicodedata.normalize('NFKC', raw_name).lower()
+            s_desc = unicodedata.normalize('NFKC', raw_desc).lower()
+            s_name = re.sub(r'[「」“”《》『』]', '"', s_name)
+            s_name = s_name.replace('－', '-').replace('／', '/').replace('～', '~').replace('・', '.')
+            s_name_stripped = re.sub(r'[\W_]+', '', s_name) # 脫水卡名
+            
+            # --- 4. 排除詞過濾 ---
+            if not is_passthrough and excludes:
+                if any(exc in s_name for exc in excludes) or any(exc in s_desc for exc in excludes): continue
+                
+            # --- 5. 必含詞過濾 ---
+            if not is_passthrough and includes:
+                if not all((inc in s_name or inc in s_desc) for inc in includes): continue
+                
+            score = 0.0
+            
+            # --- 6. 階梯評分 ---
+            if is_passthrough: score = 2.0
+            elif query:
+                joined_query = " ".join(all_terms)
+                if joined_query == s_name: score = 1.8
+                elif full_query_stripped and full_query_stripped == s_name_stripped: score = 1.6
+                elif joined_query in s_name: score = 1.4
+                elif all_terms and all(t in s_name for t in all_terms): score = 1.2
+                elif phrases and any(f'"{p}"' in s_desc for p in phrases): score = 1.1
+                elif joined_query in s_desc: score = 1.0
+                elif all_terms and all(t in s_desc for t in all_terms): score = 0.8
+                
+                # --- 7. 滑動視窗模糊比對 ---
+                if score == 0.0 and joined_query:
+                    if f_name and normal_terms:
+                        # ✨ 修正：針對各別分詞單獨進行滑動比對，防稀釋
+                        if any(MDEngine._fuzzy_match(t, s_name) >= 0.75 for t in normal_terms): score = 0.6
+                    if score == 0.0 and f_desc and normal_terms:
+                        if any(MDEngine._fuzzy_match(t, s_desc) >= 0.75 for t in normal_terms): score = 0.4
+                        
+            # 無搜尋條件，純過濾器時給予基本分
+            if not query and not is_passthrough: score = 0.1
+            
+            if score > 0:
+                cat = 1 if '(' in raw_name and ')' in raw_name else 0
+                if not raw_name: cat = 2
+                results.append((cat, score, {'id': cid, 'name': raw_name, 'hash': chash}))
+                
+        # --- 8. 排序與分頁切片 ---
+        results.sort(key=lambda x: (x[0], -x[1]))
+        
+        all_formatted = []
+        for dummy_cat, dummy_score, item in results:
+            if item['name']: all_formatted.append(f"{item['id']} ({item['name']}) [{item['hash']}]")
+            else: all_formatted.append(f"{item['id']} [{item['hash']}]")
+            
+        return all_formatted # ✨ 修正：直接回傳全量清單，切片交由 Widget 處理
+
+    @staticmethod
     def decrypt_file_bytes(raw_bytes, key=61):
         decrypted = bytearray(raw_bytes)
         for i in range(len(decrypted)): decrypted[i] ^= ((i + key + 0x23D) * key ^ (i % 7)) & 0xFF
@@ -1236,11 +1421,16 @@ class MDEngine:
         """Returns error_msg if failed, else None"""
         sd_size = (854, 480) # 🛡️ 完美的 16:9 SD 解析度
         
-        hd_frames, dummy_is_single_hd = MDEngine.extract_and_process_frames(src_path, hd_size, options)
+        # 🛡️ 動態指派專屬快取目錄，防範多程序同時寫入衝突
+        hd_options = options.copy()
+        hd_options["cache_sub_dir"] = f"frames_cache_{cutin_id}_hd"
+        hd_frames, dummy_is_single_hd = MDEngine.extract_and_process_frames(src_path, hd_size, hd_options)
         hd_atlas_img, hd_packed = MDEngine.pack_textures(hd_frames, max_size=8192)
         if hd_atlas_img is None: return hd_packed if isinstance(hd_packed, str) else _("HD 圖集面積超出顯示卡極限 (8192x8192)")
         
-        sd_frames, dummy_is_single_sd = MDEngine.extract_and_process_frames(src_path, sd_size, options)
+        sd_options = options.copy()
+        sd_options["cache_sub_dir"] = f"frames_cache_{cutin_id}_sd"
+        sd_frames, dummy_is_single_sd = MDEngine.extract_and_process_frames(src_path, sd_size, sd_options)
         sd_atlas_img, sd_packed = MDEngine.pack_textures(sd_frames, max_size=8192)
         if sd_atlas_img is None: return sd_packed if isinstance(sd_packed, str) else _("SD 圖集面積超出顯示卡極限 (8192x8192)")
 
@@ -1254,10 +1444,8 @@ class MDEngine:
         # 寫入 HD 檔案
         hd_atlas_img.save(os.path.join(mod_dir, f"{cutin_id}-hd.png"))
         with open(os.path.join(mod_dir, f"{cutin_id}-hd.atlas.txt"), "w", encoding="utf-8") as f:
-            # 🛡️ 修復大寫檔名：強制將 P 轉為大寫 (.upper())
             f.write(MDEngine.build_spine_atlas_text(f"{cutin_id.upper()}.png", hd_atlas_img.size, hd_packed))
         with open(os.path.join(mod_dir, f"{cutin_id}js-hd.json"), "w", encoding="utf-8") as f:
-            # 🛡️ 傳遞 HD 畫布基準與偏移量
             f.write(MDEngine.build_spine_42_json_text(cutin_id, hd_packed, options["fps"], options["speed"], options["popup_curve"], dummy_is_single_hd, off_x, off_y, hd_size[0], hd_size[1]))
             
         # 🛡️ SD 檔同步實施 PMA 預乘 Alpha 渲染轉換
@@ -1268,71 +1456,91 @@ class MDEngine:
         with open(os.path.join(mod_dir, f"{cutin_id}-sd.atlas.txt"), "w", encoding="utf-8") as f:
             f.write(MDEngine.build_spine_atlas_text(f"{cutin_id.upper()}.png", sd_atlas_img.size, sd_packed))
         with open(os.path.join(mod_dir, f"{cutin_id}js-sd.json"), "w", encoding="utf-8") as f:
-            # 🛡️ SD 檔也使用 HD 的畫布基準來推算平移，達成完美的跨解析度平移同步！
             f.write(MDEngine.build_spine_42_json_text(cutin_id, sd_packed, options["fps"], options["speed"], options["popup_curve"], dummy_is_single_sd, off_x, off_y, hd_size[0], hd_size[1]))
             
         return None
 
     @staticmethod
+    def _worker_cutin_single(task_info):
+        target, src_dir, mod_dir, bk_dir, enable_backup, hd_size, options = task_info
+        try:
+            cid_match = re.match(r'^(p\d+)', target, re.IGNORECASE)
+            cutin_id = cid_match.group(1).lower() if cid_match else os.path.splitext(target)[0]
+            
+            source_to_read = None
+            if enable_backup:
+                bk_possible_path = MDEngine.resolve_cutin_material_path(bk_dir, cutin_id)
+                if os.path.exists(bk_possible_path):
+                    source_to_read = bk_possible_path
+                    
+            if not source_to_read:
+                src_path = MDEngine.resolve_cutin_material_path(src_dir, target)
+                if not os.path.exists(src_path):
+                    return target, False, _("找不到對應素材")
+                if enable_backup:
+                    target_basename = os.path.basename(src_path)
+                    bk_target_path = os.path.join(bk_dir, target_basename)
+                    try:
+                        shutil.move(src_path, bk_target_path)
+                        source_to_read = bk_target_path
+                    except Exception:
+                        source_to_read = src_path
+                else:
+                    source_to_read = src_path
+                    
+            if not source_to_read or not os.path.exists(source_to_read):
+                return target, False, _("無法定位有效素材，請檢查原檔或備份檔")
+                
+            err = MDEngine._generate_spine_cutin_sync(source_to_read, cutin_id, hd_size, options, mod_dir)
+            
+            # 🛡️ 任務完成，清理專屬暫存並強制 GC
+            try:
+                hd_cache = os.path.join(MDEngine.TEMP_DIR, f"frames_cache_{cutin_id}_hd")
+                sd_cache = os.path.join(MDEngine.TEMP_DIR, f"frames_cache_{cutin_id}_sd")
+                if os.path.exists(hd_cache): shutil.rmtree(hd_cache, ignore_errors=True)
+                if os.path.exists(sd_cache): shutil.rmtree(sd_cache, ignore_errors=True)
+            except Exception: pass
+            
+            import gc
+            gc.collect()
+            
+            if err: return target, False, err
+            return target, True, None
+        except Exception as e:
+            # 🛡️ 盲點 B 修正：動畫生成包含 OpenCV 與 Spine 等複雜底層，加入 traceback 確保除錯線索不遺失
+            import traceback
+            return target, False, f"{str(e)}\n{traceback.format_exc()}"
+
+    @staticmethod
     def task_post_process_cutin_batch(src_dir, root_dir, mod_folder, bk_folder, enable_backup, targets, hd_size, options, progress_cb, finish_cb):
-        """🚀 強大的批次處理引擎：支援模糊路徑補全、智慧防髒檔與自動移轉備份"""
         try:
             mod_dir = MDEngine.resolve_path(root_dir, mod_folder)
-            # 🛡️ 修正：將備份目錄建立在 mod_dir (卡圖改) 內部，徹底對齊其他分類的結構
             bk_dir = MDEngine.resolve_path(mod_dir, bk_folder)
-            
             os.makedirs(mod_dir, exist_ok=True)
+            if enable_backup: os.makedirs(bk_dir, exist_ok=True)
+            
+            tasks = [(target, src_dir, mod_dir, bk_dir, enable_backup, hd_size, options.copy()) for target in targets]
             
             success = 0
             errors = []
-            for dummy_idx, target in enumerate(targets):
-                if progress_cb: progress_cb(dummy_idx + 1)
-                
-                # 1. 萃取純淨的卡片 ID (例如 p18533)
-                cid_match = re.match(r'^(p\d+)', target, re.IGNORECASE)
-                cutin_id = cid_match.group(1).lower() if cid_match else os.path.splitext(target)[0]
-                
-                source_to_read = None
-                
-                # 🛡️ 情況 A：防髒檔與無限覆蓋機制。先檢查是否已經有備份的純淨原檔
-                if enable_backup:
-                    bk_possible_path = MDEngine.resolve_cutin_material_path(bk_dir, cutin_id)
-                    if os.path.exists(bk_possible_path):
-                        source_to_read = bk_possible_path
-                        
-                # 🛡️ 情況 B：備份區沒有，代表這是新的素材，從 mod_dir 抓取
-                if not source_to_read:
-                    src_path = MDEngine.resolve_cutin_material_path(src_dir, target)
-                    if not os.path.exists(src_path):
-                        errors.append(f"{target}: {_('找不到對應素材')}")
-                        continue
-                        
-                    if enable_backup:
-                        # 💡 自動移動功能：將原始圖檔或 PSD「移動」到修改前原檔
-                        # 保持「卡圖改」的純淨，避免後續輸出後綴檔案時發生混亂與覆蓋
-                        target_basename = os.path.basename(src_path)
-                        bk_target_path = os.path.join(bk_dir, target_basename)
-                        try:
-                            shutil.move(src_path, bk_target_path)
-                            source_to_read = bk_target_path
-                        except Exception:
-                            # 若移動失敗（例如被其他程式佔用），退回使用原始路徑
-                            source_to_read = src_path
-                    else:
-                        source_to_read = src_path
-                        
-                # 二次防呆校驗
-                if not source_to_read or not os.path.exists(source_to_read):
-                    errors.append(f"{target}: {_('無法定位有效素材，請檢查原檔或備份檔')}")
-                    continue
-                
-                # 執行核心生成，將讀取來源鎖定為防護過濾後的 source_to_read
-                err = MDEngine._generate_spine_cutin_sync(source_to_read, cutin_id, hd_size, options, mod_dir)
-                if err:
-                    errors.append(f"{target}: {err}") 
-                else:
-                    success += 1
-                    
+            count = 0
+            
+            # 🛡️ 智慧節流閥：尊重使用者設定，但強制將算力鎖死在上限 3，徹底消滅 16 核心 OOM 的危機
+            user_threads = options.get("max_threads", "Auto")
+            safe_workers = max(1, min(MDEngine.get_heavy_task_workers(user_threads), 3))
+            
+            with concurrent.futures.ProcessPoolExecutor(max_workers=safe_workers, initializer=_init_worker, initargs=(UI_LANG_DICT,)) as executor:
+                futures = [executor.submit(MDEngine._worker_cutin_single, t) for t in tasks]
+                for future in concurrent.futures.as_completed(futures):
+                    count += 1
+                    if progress_cb: progress_cb(count)
+                    try:
+                        tgt, is_ok, err_msg = future.result()
+                        if is_ok: success += 1
+                        else: errors.append(f"{tgt}: {err_msg}")
+                    except Exception as e:
+                        errors.append(_("系統例外錯誤：{error}").format(error=str(e)))
+            
             MDEngine.clean_temp_dir()
             finish_cb(True, success, errors)
         except Exception as e:
@@ -1400,11 +1608,13 @@ class MDEngine:
         
     @staticmethod
     def clean_temp_dir():
-        """定期清道夫：移除用過即丟的影格快取與 PSD 快取，但保留 GIF 預覽展示檔"""
+        """定期清道夫：支援動態清理多程序產生的專屬快取資料夾"""
         try:
-            for cache_folder in ["frames_cache", "psd_cache"]:
-                cache_path = os.path.join(MDEngine.TEMP_DIR, cache_folder)
-                if os.path.exists(cache_path):
+            if not os.path.exists(MDEngine.TEMP_DIR): return
+            for item in os.listdir(MDEngine.TEMP_DIR):
+                # 🛡️ 支援動態後綴的快取資料夾清理
+                if item.startswith("frames_cache") or item.startswith("psd_cache"):
+                    cache_path = os.path.join(MDEngine.TEMP_DIR, item)
                     shutil.rmtree(cache_path, ignore_errors=True)
         except Exception: pass
 
@@ -1529,6 +1739,33 @@ class MDEngine:
                     return os.path.join(src_dir, item)
         except Exception: pass
         return exact_path
+
+    @staticmethod
+    def resolve_overframe_material_path(mod_dir, bk_dir, target_id):
+        """✨ 智慧雙軌路徑解析器：統一處理超框/單圖素材與備份區尋找"""
+        if not target_id: return "", "", False
+        target_id = re.sub(r'-(ch|bg)$', '', os.path.splitext(target_id)[0], flags=re.IGNORECASE)
+        
+        search_dirs = []
+        if bk_dir and os.path.exists(bk_dir): search_dirs.append(bk_dir)
+        if mod_dir and os.path.exists(mod_dir): search_dirs.append(mod_dir)
+        
+        ch_path, bg_path, norm_path = "", "", ""
+        
+        for d in search_dirs:
+            if not os.path.exists(d): continue
+            for ext in [".png", ".jpg", ".jpeg", ".webp", ".bmp"]:
+                cand_ch = os.path.join(d, f"{target_id}-ch{ext}")
+                cand_bg = os.path.join(d, f"{target_id}-bg{ext}")
+                cand_norm = os.path.join(d, f"{target_id}{ext}")
+                
+                if not ch_path and os.path.exists(cand_ch): ch_path = cand_ch
+                if not bg_path and os.path.exists(cand_bg): bg_path = cand_bg
+                if not norm_path and os.path.exists(cand_norm): norm_path = cand_norm
+        
+        if ch_path:
+            return ch_path, bg_path, True
+        return norm_path, "", False
 
     @staticmethod
     def extract_and_process_frames(src_path, canvas_size, options, single_frame_only=False, preview_time_sec=0.0):
@@ -1766,7 +2003,8 @@ class MDEngine:
         
         is_single = True; count_frames = 0
         use_disk_cache = options.get("use_disk_cache", False) and not single_frame_only
-        frames_cache_dir = os.path.join(MDEngine.TEMP_DIR, "frames_cache")
+        cache_sub_dir = options.get("cache_sub_dir", "frames_cache")
+        frames_cache_dir = os.path.join(MDEngine.TEMP_DIR, cache_sub_dir)
         
         if use_disk_cache:
             if os.path.exists(frames_cache_dir): shutil.rmtree(frames_cache_dir, ignore_errors=True)
@@ -1829,7 +2067,7 @@ class MDEngine:
                 frame = ImageEnhance.Contrast(frame).enhance(1.0 + options.get("contrast", 0) / 100.0)
 
             # --- 🛡️ 階段 3：幾何重採樣 (Resize/Crop/Rotate) ---
-            fill_mode = options.get("fill_mode", "裁切滿版 (Crop Fill)")
+            fill_mode = options.get("fill_mode", "Crop")
             if "Crop" in fill_mode:
                 ratio = max(canvas_w / frame.width, canvas_h / frame.height)
                 new_w, new_h = int(frame.width * ratio), int(frame.height * ratio)
@@ -3018,22 +3256,41 @@ class MDEngine:
         except Exception as e: finish_cb(False, str(e), traceback.format_exc())
 
     @staticmethod
+    def _worker_copy_single(src, dst):
+        try:
+            if os.path.exists(src):
+                shutil.copy2(src, dst)
+                return 1
+        except Exception: pass
+        return 0
+
+    @staticmethod
     def task_find(csv_path, src_dir, out_dir, target_ids, visual_only, progress_cb, finish_cb):
         try:
             os.makedirs(out_dir, exist_ok=True)
-            mapping_dict, _db = MDEngine.get_csv_data(csv_path)
-            success, count = 0, 0
+            mapping_dict, dummy_db = MDEngine.get_csv_data(csv_path)
+            
+            # 1. 整理去重任務清單 (確保 I/O 不會踩踏)
+            tasks = set()
             for card_id in target_ids:
-                # 🛡️ 修正：攔截手動輸入的非視覺資產
                 if visual_only and not MDEngine.is_visual_asset(card_id): continue
                 if card_id in mapping_dict:
                     for item in mapping_dict[card_id]:
-                        count += 1
-                        if progress_cb and count % 10 == 0: progress_cb(count)
                         src = MDEngine.get_actual_source_path(src_dir, item['hash'], item['folder'])
-                        if os.path.exists(src):
-                            try: shutil.copy2(src, os.path.join(out_dir, item['hash'])); success += 1
-                            except Exception: pass
+                        dst = os.path.join(out_dir, item['hash'])
+                        tasks.add((src, dst))
+            
+            # 2. 多執行緒派發 (使用 ThreadPool 極速調度 SSD 寫入佇列)
+            success, count = 0, 0
+            optimal_threads = max(4, MDEngine.get_optimal_workers() * 2)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=optimal_threads) as executor:
+                futures = [executor.submit(MDEngine._worker_copy_single, s, d) for s, d in tasks]
+                for future in concurrent.futures.as_completed(futures):
+                    count += 1
+                    if progress_cb and count % 10 == 0: progress_cb(count)
+                    try: success += future.result()
+                    except Exception: pass
+                    
             finish_cb(True, success, None)
         except Exception as e: finish_cb(False, str(e), traceback.format_exc())
 
@@ -3281,7 +3538,8 @@ class MDEngine:
         嚴格遵守 DRY 與解耦原則：將裁切、相框、填充、拉伸邏輯全數收攏於此。
         """
         w, h = img.size
-        c_id = os.path.splitext(img_name)[0].split('_')[0]
+        c_id_raw = os.path.splitext(img_name)[0].split('_')[0]
+        c_id = re.sub(r'-ch$', '', c_id_raw, flags=re.IGNORECASE)
         card_type, sub_type = "怪獸", "通常"
         
         if c_id in card_dict:
@@ -3316,32 +3574,17 @@ class MDEngine:
 
         # 策略 4: 超框化處理 (11:16 裁切與相框疊加)
         if mode == "MODE_OVERFRAME":
-            if w < 704 or h < 1024:
-                ratio = max(704.0 / w, 1024.0 / h)
-                new_w, new_h = int(w * ratio), int(h * ratio)
-                img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
-                w, h = img.size 
-                
-            target_ratio = 11 / 16.0
-            current_ratio = w / h
-            if current_ratio > target_ratio:
-                new_w = int(h * target_ratio)
-                left = (w - new_w) // 2
-                img = img.crop((left, 0, left + new_w, h))
-            elif current_ratio < target_ratio:
-                new_h = int(w / target_ratio)
-                img = img.crop((0, 0, w, new_h))
-                
             frame_name = MDEngine.get_frame_template_name(card_type, sub_type)
             frame_dir = os.path.join(os.getcwd(), "MD_Tool_Essential", "CardFrame")
             psd_path = os.path.join(frame_dir, f"{frame_name}.psd")
             png_path = os.path.join(frame_dir, f"{frame_name}.png")
             
-            new_img = img
             try: from psd_tools import PSDImage; HAS_PSD_TOOLS = True
             except ImportError: HAS_PSD_TOOLS = False
             
             opacities = options.get("opacities", {})
+            frame_layers = {}
+            raw_masks = {} # 儲存純淨布林幾何遮罩
             
             if HAS_PSD_TOOLS and os.path.exists(psd_path):
                 if frame_name not in MDEngine._psd_cache:
@@ -3356,40 +3599,161 @@ class MDEngine:
                             full_canvas.paste(layer_img, layer.offset)
                             layer_dict[name] = full_canvas
                     MDEngine._psd_cache[frame_name] = layer_dict
+                
+                import numpy as np # 提前引入供 mask 提取使用
+                for l_name, l_img in MDEngine._psd_cache[frame_name].items():
+                    resized = l_img.resize((704, 1024), Image.Resampling.LANCZOS)
+                    # 提取純淨幾何遮罩
+                    raw_masks[l_name] = (np.array(resized, dtype=np.uint8)[:, :, 3] > 0)
                     
-                cached_layers = MDEngine._psd_cache[frame_name]
-                # 排在串列最上方代表最先繪製（放在最底層）
-                draw_order = [
-                    ("BackGround", opacities.get("background", 1.0)),
-                    ("EffBox", opacities.get("effbox", 1.0)),
-                    ("EffFrame", opacities.get("effframe", 1.0)),
-                    ("ArtFrame", opacities.get("artframe", 1.0)),
-                    ("NameBox", opacities.get("namebox", 1.0)),
-                    ("PeriFrame", opacities.get("periframe", 1.0))
-                ]
-                for l_name, opacity in draw_order:
-                    if l_name in cached_layers and opacity > 0:
-                        layer_img = cached_layers[l_name].resize(new_img.size, Image.Resampling.LANCZOS)
-                        if opacity < 1.0:
-                            r, g, b, a = layer_img.split()
-                            a = a.point(lambda p: int(p * opacity))
-                            layer_img = Image.merge("RGBA", (r, g, b, a))
-                        new_img = Image.alpha_composite(new_img, layer_img)
-            elif os.path.exists(png_path):
-                with Image.open(png_path) as frame:
-                    frame = frame.convert("RGBA").resize(img.size, Image.Resampling.LANCZOS)
-                    op = opacities.get("periframe", 1.0)
-                    if op < 1.0:
-                        r, g, b, a = frame.split()
-                        a = a.point(lambda p: int(p * op))
-                        frame = Image.merge("RGBA", (r, g, b, a))
-                    new_img = Image.alpha_composite(new_img, frame)
+                    op = opacities.get(l_name.lower(), 1.0)
+                    if op > 0:
+                        if op < 1.0:
+                            r_ch, g_ch, b_ch, a_ch = resized.split()
+                            a_ch = a_ch.point(lambda p: int(p * op))
+                            resized = Image.merge("RGBA", (r_ch, g_ch, b_ch, a_ch))
+                        frame_layers[l_name] = resized
+
+            # 🛡️【階段 1：幾何純化 (Sanitization)】
+            m_effbox = raw_masks.get("EffBox", np.zeros((1024, 704), dtype=bool))
+            if "ArtFrame" in raw_masks:
+                raw_masks["ArtFrame"] = raw_masks["ArtFrame"] & ~m_effbox
+            if "EffFrame" in raw_masks:
+                raw_masks["EffFrame"] = raw_masks["EffFrame"] & ~m_effbox
+
+            masks = options.get("masks", {})
+            if not masks:
+                masks = {
+                    "prev": {"PeriFrame": True, "ArtFrame": True, "EffFrame": True},
+                    "bake": {"PeriFrame": False, "ArtFrame": False, "EffFrame": False},
+                    "dirty": {"PeriFrame": True, "ArtFrame": True, "EffFrame": True}
+                }
+            prev_dict = masks.get("prev", {})
+            bake_dict = masks.get("bake", {})
+            dirty_dict = masks.get("dirty", {})
+            
+            is_preview = options.get("is_preview", False)
+            foil_params = options.get("foil_params", {})
+            sim_enable = foil_params.get("sim_enable", False)
+
+            # --- 🚀 階段 2：底層貼圖真相 (Bake) ---
+            # 嚴格只看「寫入貼圖 (Bake)」勾選，將 RGB 永久烙印進底層組件
+            for l_name, layer_img in frame_layers.items():
+                if bake_dict.get(l_name, False):
+                    layer_mask = raw_masks.get(l_name, np.zeros((1024, 704), dtype=bool))
+                    frame_layers[l_name] = MDEngine._simulate_foil(layer_img, layer_mask, foil_params, use_alpha_weight=True)
+
+            # --- 🚀 階段 3：圖層 Z-Order 幾何合成 ---
+            # 取出共用的排序邏輯，統一單圖與雙圖的 Z-Order 系統
+            z_order = options.get("z_order", ["CH_LAYER", "PeriFrame", "NameBox", "EffFrame", "ArtFrame", "EffBox", "BackGround", "BG_LAYER"])
+            
+            if options.get("is_advanced", False):
+                adv_bg_path = options.get("adv_bg_path", "")
+                if adv_bg_path and os.path.exists(adv_bg_path):
+                    with Image.open(adv_bg_path) as bg_raw:
+                        layer_bg = MDEngine._apply_adv_transform(bg_raw.convert("RGBA"), options.get("bg_x", 0), options.get("bg_y", 0), options.get("bg_s", 100), options.get("bg_rot", 0))
+                else:
+                    hex_str = options.get("bg_color", "#FF000000").lstrip('#')
+                    if len(hex_str) == 8:
+                        a, r_c, g_c, b_c = int(hex_str[0:2], 16), int(hex_str[2:4], 16), int(hex_str[4:6], 16), int(hex_str[6:8], 16)
+                    elif len(hex_str) == 6:
+                        a, r_c, g_c, b_c = 255, int(hex_str[0:2], 16), int(hex_str[2:4], 16), int(hex_str[4:6], 16)
+                    else:
+                        a, r_c, g_c, b_c = 255, 0, 0, 0
+                    layer_bg = Image.new("RGBA", (704, 1024), (r_c, g_c, b_c, a))
+
+                layer_ch = MDEngine._apply_adv_transform(img, options.get("ch_x", 0), options.get("ch_y", 0), options.get("ch_s", 100), options.get("ch_rot", 0))
+                base_art_layer = layer_ch
+            else:
+                # 傳統單圖自適應縮放
+                if w < 704 or h < 1024:
+                    ratio = max(704.0 / w, 1024.0 / h)
+                    new_w, new_h = int(w * ratio), int(h * ratio)
+                    img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+                    w, h = img.size 
                     
+                target_ratio = 11 / 16.0
+                current_ratio = w / h
+                if current_ratio > target_ratio:
+                    new_w = int(h * target_ratio)
+                    left = (w - new_w) // 2
+                    img = img.crop((left, 0, left + new_w, h))
+                elif current_ratio < target_ratio:
+                    new_h = int(w / target_ratio)
+                    img = img.crop((0, 0, w, new_h))
+
+                base_art_layer = img.resize((704, 1024), Image.Resampling.LANCZOS)
+                layer_bg = base_art_layer  # 將普通單圖指派給最底層 (BG_LAYER)
+                layer_ch = Image.new("RGBA", (704, 1024), (0,0,0,0))  # 頂層角色層 (CH_LAYER) 保持全透明
+
+            new_img = Image.new("RGBA", (704, 1024), (0,0,0,0))
+            for l_name in reversed(z_order):
+                if l_name == "BG_LAYER": new_img = Image.alpha_composite(new_img, layer_bg)
+                elif l_name == "CH_LAYER": new_img = Image.alpha_composite(new_img, layer_ch)
+                elif l_name in frame_layers:
+                    resized_frame = frame_layers[l_name].resize(new_img.size, Image.Resampling.LANCZOS)
+                    new_img = Image.alpha_composite(new_img, resized_frame)
+
+            # --- 🚀 階段 4：透明通道判定 (Dirty Alpha & Character Punch) ---
+            try:
+                import numpy as np
+                data = np.array(new_img, dtype=np.uint8)
+                m_ch_art = np.array(base_art_layer, dtype=np.uint8)[:, :, 3] > 0
+                
+                empty_mask = np.zeros((1024, 704), dtype=bool)
+                m_explicit_dirty = np.zeros((1024, 704), dtype=bool)
+                m_3frames_clean = np.zeros((1024, 704), dtype=bool)
+
+                for fname in ["PeriFrame", "NameBox", "ArtFrame", "EffFrame", "EffBox", "BackGround"]:
+                    layer_mask = raw_masks.get(fname, empty_mask)
+                    # 軌道 B：使用者手動勾選透明化，直接生效，完全不受烘焙勾選干擾
+                    if dirty_dict.get(fname, False):
+                        m_explicit_dirty |= layer_mask
+                    # 純淨三大框 (供角色 -ch 超框交集挖空使用)
+                    if fname in ["PeriFrame", "ArtFrame", "EffFrame"]:
+                        m_3frames_clean |= layer_mask
+                    
+                # 軌道 A：只有使用 -ch 角色圖層時，才強制自動觸發「角色超框交集挖空」
+                if options.get("is_advanced", False):
+                    m_character_punch = m_ch_art & m_3frames_clean
+                else:
+                    m_character_punch = empty_mask
+                
+                # 最終 Alpha 歸零遮罩 = 角色超框挖空 ∪ 使用者手動整塊挖空
+                m_final_zero = m_character_punch | m_explicit_dirty
+
+                # --- 🚀 階段 5：分支輸出與頂層著色器模擬 ---
+                if is_preview:
+                    if sim_enable:
+                        m_shine_preview = np.zeros((1024, 704), dtype=bool)
+                        for fname in ["PeriFrame", "NameBox", "ArtFrame", "EffFrame", "EffBox", "BackGround"]:
+                            if prev_dict.get(fname, False):
+                                m_shine_preview |= raw_masks.get(fname, empty_mask)
+                                
+                        # 扣除 Alpha 為 0 的挖空區域，模擬遊戲真實 3D 著色器行為
+                        m_shine_top = m_shine_preview & ~m_final_zero
+                        
+                        if np.any(m_shine_top):
+                            prev_img = Image.fromarray(data, "RGBA")
+                            prev_img = MDEngine._simulate_foil(prev_img, m_shine_top, foil_params, use_alpha_weight=False)
+                            data = np.array(prev_img, dtype=np.uint8)
+                            
+                    # 預覽畫面強制將背景設為不透明，以防 Qt 渲染黑塊，但光斑已經完美避開了透明挖空區
+                    data[:, :, 3] = 255
+                    new_img = Image.fromarray(data, "RGBA")
+                else:
+                    # 實際輸出：精準寫入透明化遮罩
+                    data[m_final_zero, 3] = 0
+                    new_img = Image.fromarray(data, "RGBA")
+                    
+            except ImportError:
+                pass
+            
             return new_img
         return img
 
     @staticmethod
-    def task_generate_preview(img_path, csv_path, mode, pad_pct, opacities, progress_cb, finish_cb):
+    def task_generate_preview(img_path, csv_path, mode, pad_pct, options_dict, progress_cb, finish_cb):
         try:
             dummy_map, db = MDEngine.get_csv_data(csv_path)
             card_dict = {d['id']: d for d in db}
@@ -3397,7 +3761,27 @@ class MDEngine:
             with Image.open(img_path) as img:
                 img = img.convert("RGBA")
                 strategy_mode = "MODE_PENDULUM_PAD" if mode == "pendulum" else "MODE_OVERFRAME"
-                options = {"pad_pct": pad_pct, "opacities": opacities}
+                
+                options = {"pad_pct": pad_pct}
+                if "opacities" in options_dict: options.update(options_dict)
+                else: options["opacities"] = options_dict
+
+                is_advanced = "-ch" in img_name.lower()
+                options["is_advanced"] = is_advanced
+                if is_advanced:
+                    img_dir = os.path.dirname(img_path)
+                    bg_base = re.sub(r'-ch$', '-bg', os.path.splitext(img_name)[0], flags=re.IGNORECASE)
+                    bg_path = ""
+                    search_dirs = [img_dir, os.path.dirname(img_dir), os.path.join(img_dir, "修改前原檔")]
+                    for d in search_dirs:
+                        if not os.path.exists(d): continue
+                        for ext in [".png", ".jpg", ".jpeg", ".webp", ".bmp"]:
+                            cand = os.path.join(d, f"{bg_base}{ext}")
+                            if os.path.exists(cand):
+                                bg_path = cand; break
+                        if bg_path: break
+                    options["adv_bg_path"] = bg_path
+
                 res_img = MDEngine.process_texture_image(img, img_name, card_dict, strategy_mode, options)
                 
                 # 轉化為 QImage 提供給 UI
@@ -3409,61 +3793,226 @@ class MDEngine:
         except Exception as e:
             finish_cb(False, str(e), None)
 
+    @staticmethod
+    def _apply_adv_transform(img, dx, dy, scale_pct, rot_deg):
+        w_orig, h_orig = img.size
+        s_base = min(704.0 / w_orig, 1024.0 / h_orig)
+        w_fit = max(1, int(round(w_orig * s_base * (scale_pct / 100.0))))
+        h_fit = max(1, int(round(h_orig * s_base * (scale_pct / 100.0))))
+        
+        resized = img.resize((w_fit, h_fit), Image.Resampling.LANCZOS)
+        if rot_deg != 0:
+            resized = resized.rotate(-rot_deg, resample=Image.Resampling.BICUBIC, expand=True)
+            
+        w_rot, h_rot = resized.size
+        x_paste = int(round((704 - w_rot) / 2.0)) + dx
+        y_paste = int(round((1024 - h_rot) / 2.0)) + dy
+        
+        canvas = Image.new("RGBA", (704, 1024), (0, 0, 0, 0))
+        canvas.paste(resized, (x_paste, y_paste), resized)
+        return canvas
+
+    @staticmethod
+    def _simulate_foil(img, m_shine_mask, params, use_alpha_weight=False):
+        try:
+            import numpy as np
+            import math
+            data = np.array(img, dtype=np.float32)
+            m_shine = np.asarray(m_shine_mask, dtype=bool)
+            params = params or {}
+            
+            # 取得基礎參數與進階光學參數
+            intensity = max(0.0, float(params.get("intensity", 100)) / 100.0)
+            saturation = max(0.0, float(params.get("saturation", 120)) / 100.0)
+            frequency = max(0.0001, float(params.get("frequency", 10.0)) / 5000.0)
+            angle = float(params.get("angle", 45))
+            rad = math.radians(angle % 360.0)
+            
+            palette_mode = params.get("palette", "PALETTE_OPAL")
+            base_light = float(params.get("base_light", 40)) / 100.0
+            sharpness = max(1.0, float(params.get("sharpness", 10)) / 10.0)
+            blend_mode = params.get("blend_mode", "BLEND_SOFT")
+            
+            h, w = data.shape[:2]
+            Y, X = np.ogrid[:h, :w]
+            G = (X * math.cos(rad) + Y * math.sin(rad)) * frequency
+            
+            # 餘弦光譜調變 (IQ Cosine Palette) 基準化至 0.0~1.0 確保不泛白
+            if palette_mode == "PALETTE_RAINBOW":
+                pa, pb, pc, pd = (0.5, 0.5, 0.5), (0.5, 0.5, 0.5), (1.0, 1.0, 1.0), (0.0, 0.333, 0.667)
+            elif palette_mode == "PALETTE_GOLD":
+                pa, pb, pc, pd = (0.5, 0.5, 0.5), (0.5, 0.5, 0.2), (1.0, 1.0, 1.0), (0.0, 0.1, 0.2)
+            elif palette_mode == "PALETTE_SILVER":
+                pa, pb, pc, pd = (0.5, 0.5, 0.5), (0.2, 0.2, 0.3), (1.0, 1.0, 1.0), (0.5, 0.5, 0.5)
+            else: # PALETTE_OPAL (柔和珍珠粉彩)
+                pa, pb, pc, pd = (0.5, 0.5, 0.5), (0.4, 0.4, 0.4), (1.0, 1.0, 1.0), (0.0, 0.333, 0.667)
+
+            def cos_color(t_val, a, b, c_val, d):
+                return a + b * np.cos(2.0 * math.pi * (c_val * t_val + d))
+
+            r_wave = cos_color(G, pa[0], pb[0], pc[0], pd[0])
+            g_wave = cos_color(G, pa[1], pb[1], pc[1], pd[1])
+            b_wave = cos_color(G, pa[2], pb[2], pc[2], pd[2])
+
+            # 階段 1：色彩飽和度增益 (在純淨波形上作用)
+            r_foil = np.clip((r_wave - 0.5) * saturation + 0.5, 0.0, 1.0)
+            g_foil = np.clip((g_wave - 0.5) * saturation + 0.5, 0.0, 1.0)
+            b_foil = np.clip((b_wave - 0.5) * saturation + 0.5, 0.0, 1.0)
+
+            # 階段 2：高光銳利化 (聚焦光弧) - 採用亮度權重法，保護色相不偏移
+            if sharpness > 1.0:
+                lum = 0.299 * r_foil + 0.587 * g_foil + 0.114 * b_foil
+                lum_shaped = np.power(lum, sharpness)
+                ratio = np.where(lum > 0, lum_shaped / lum, 0)
+                r_foil = np.clip(r_foil * ratio, 0.0, 1.0)
+                g_foil = np.clip(g_foil * ratio, 0.0, 1.0)
+                b_foil = np.clip(b_foil * ratio, 0.0, 1.0)
+
+            # 階段 3：底色珠光調變 (線性混入粉白基底)
+            r_foil = base_light + (1.0 - base_light) * r_foil
+            g_foil = base_light + (1.0 - base_light) * g_foil
+            b_foil = base_light + (1.0 - base_light) * b_foil
+
+            # 卡面原色提取
+            r = data[:, :, 0] / 255.0
+            g = data[:, :, 1] / 255.0
+            b = data[:, :, 2] / 255.0
+            
+            actual_intensity = intensity
+            if use_alpha_weight:
+                alpha_ratio = data[:, :, 3] / 255.0
+                actual_intensity = intensity * alpha_ratio[m_shine]
+            
+            base_intensity = np.minimum(1.0, actual_intensity)
+            overdrive = np.maximum(0.0, actual_intensity - 1.0)
+            
+            # 階段 4：雙軌混色系統 (柔光滲透 vs 鮮明覆蓋)
+            if blend_mode == "BLEND_SOFT":
+                # Pegtop 柔光公式 (保留底層凹凸紋理與深色輪廓)
+                r_soft = (1.0 - 2.0 * r_foil[m_shine]) * (r[m_shine] ** 2) + 2.0 * r[m_shine] * r_foil[m_shine]
+                g_soft = (1.0 - 2.0 * g_foil[m_shine]) * (g[m_shine] ** 2) + 2.0 * g[m_shine] * g_foil[m_shine]
+                b_soft = (1.0 - 2.0 * b_foil[m_shine]) * (b[m_shine] ** 2) + 2.0 * b[m_shine] * b_foil[m_shine]
+
+                res_r = r[m_shine] * (1.0 - base_intensity) + r_soft * base_intensity + (r_foil[m_shine] * overdrive)
+                res_g = g[m_shine] * (1.0 - base_intensity) + g_soft * base_intensity + (g_foil[m_shine] * overdrive)
+                res_b = b[m_shine] * (1.0 - base_intensity) + b_soft * base_intensity + (b_foil[m_shine] * overdrive)
+            else:
+                # 傳統濾色 (螢幕疊加) + 高光過驅 (強烈雷射感)
+                res_r = 1.0 - (1.0 - r[m_shine]) * (1.0 - r_foil[m_shine] * base_intensity) + (r_foil[m_shine] * overdrive)
+                res_g = 1.0 - (1.0 - g[m_shine]) * (1.0 - g_foil[m_shine] * base_intensity) + (g_foil[m_shine] * overdrive)
+                res_b = 1.0 - (1.0 - b[m_shine]) * (1.0 - b_foil[m_shine] * base_intensity) + (b_foil[m_shine] * overdrive)
+            
+            # 原地布林遮罩覆寫與溢出防護 (Tone Mapping)
+            data[m_shine, 0] = np.clip(res_r * 255.0, 0.0, 255.0)
+            data[m_shine, 1] = np.clip(res_g * 255.0, 0.0, 255.0)
+            data[m_shine, 2] = np.clip(res_b * 255.0, 0.0, 255.0)
+            
+            return Image.fromarray(data.astype(np.uint8), 'RGBA')
+        except ImportError:
+            return img
+
     _psd_cache = {}
 
     @staticmethod
-    def task_post_process(mod_img_dir, backup_dir, enable_backup, pad_pct, targets, mode, csv_path, opacities, progress_cb, finish_cb):
+    def _worker_post_process_single(task_info):
+        target_id, mod_img_dir, backup_dir, enable_backup, strategy_mode, options, card_mini_dict = task_info
+        
+        # 呼叫集中解析器
+        ch_path, bg_path, is_advanced = MDEngine.resolve_overframe_material_path(mod_img_dir, backup_dir, target_id)
+        
+        if not ch_path:
+            return target_id, False, _("找不到指定的圖片素材")
+            
+        options["is_advanced"] = is_advanced
+        options["adv_bg_path"] = bg_path
+        
+        dummy_name, ext = os.path.splitext(ch_path)
+        base_name = re.sub(r'-(ch|bg)$', '', os.path.splitext(target_id)[0], flags=re.IGNORECASE)
+        out_img_name = f"{base_name}{ext}"
+        img_name = os.path.basename(ch_path)
+        
+        try:
+            backup_img_path = os.path.join(backup_dir, img_name)
+            source_to_read = ch_path
+            
+            # 若備份檔案不存在且啟用備份，則執行搬移/複製
+            if enable_backup and os.path.dirname(ch_path) == mod_img_dir:
+                shutil.copy2(ch_path, backup_img_path)
+                if bg_path and os.path.dirname(bg_path) == mod_img_dir:
+                    shutil.copy2(bg_path, os.path.join(backup_dir, os.path.basename(bg_path)))
+            
+            with Image.open(source_to_read) as raw_img:
+                img_rgba = raw_img.convert("RGBA")
+                new_img = MDEngine.process_texture_image(img_rgba, out_img_name, card_mini_dict, strategy_mode, options)
+                
+            out_img_path = os.path.join(mod_img_dir, out_img_name)
+            temp_path = f"{out_img_path}_tmp.png"
+            new_img.save(temp_path, format="PNG")
+            os.replace(temp_path, out_img_path)
+            
+            # 清理原始的 -ch 與 -bg (非破壞性生命週期，已備份)
+            if is_advanced and enable_backup:
+                if os.path.dirname(ch_path) == mod_img_dir:
+                    try: os.remove(ch_path)
+                    except Exception: pass
+                if bg_path and os.path.dirname(bg_path) == mod_img_dir:
+                    try: os.remove(bg_path)
+                    except Exception: pass
+            
+            if new_img is not img_rgba:
+                img_rgba.close()
+                
+            new_img.close()
+            import gc
+            gc.collect()
+            
+            return out_img_name, True, None
+        except Exception as e:
+            import traceback
+            return target_id, False, f"{str(e)}\n{traceback.format_exc()}"
+
+    @staticmethod
+    def task_post_process(mod_img_dir, backup_dir, enable_backup, pad_pct, targets, mode, csv_path, options_dict, progress_cb, finish_cb):
         try:
             if enable_backup: os.makedirs(backup_dir, exist_ok=True)
-            
             dummy_map, db = MDEngine.get_csv_data(csv_path)
             card_dict = {d['id']: d for d in db}
 
-            # 嘗試載入 psd-tools
-            try: from psd_tools import PSDImage; HAS_PSD_TOOLS = True
-            except ImportError: HAS_PSD_TOOLS = False
+            tasks = []
+            for raw_target in targets:
+                if re.search(r'-bg\.(png|jpg|jpeg|webp|bmp)$', raw_target, re.IGNORECASE): continue
+                c_id_raw = os.path.splitext(raw_target)[0].split('_')[0]
+                c_id = re.sub(r'-(ch|bg)$', '', c_id_raw, flags=re.IGNORECASE)
+                card_mini_dict = {c_id: card_dict[c_id]} if c_id in card_dict else {}
+                
+                if mode == "pendulum": strategy_mode = "MODE_PENDULUM_PAD"
+                elif mode == "pendulum_orig": strategy_mode = "MODE_PENDULUM_ORIGINAL_CROP"
+                else: strategy_mode = "MODE_OVERFRAME"
+                
+                options = {"pad_pct": pad_pct}
+                if "opacities" in options_dict: options.update(options_dict)
+                else: options["opacities"] = options_dict
+                
+                # 直接將 target 傳給 Worker，由 Worker 調用 resolve_overframe_material_path 判定
+                tasks.append((raw_target, mod_img_dir, backup_dir, enable_backup, strategy_mode, options, card_mini_dict))
 
             success, count = 0, 0
-            for img_name in targets:
-                count += 1
-                if progress_cb: progress_cb(count)
-                img_path = os.path.join(mod_img_dir, img_name)
-                if not os.path.isfile(img_path): continue
-                
-                # --- [新增的純淨判斷式：還原優先管線] ---
-                backup_img_path = os.path.join(backup_dir, img_name)
-                source_to_read = img_path
-                
-                if os.path.exists(backup_img_path):
-                    # 情況 A：如果備份檔已存在，代表過去已經處理過了。
-                    # 直接將這張備份的「純淨原檔」作為讀取來源，避免二次疊加造成損壞。
-                    source_to_read = backup_img_path
-                elif enable_backup:
-                    # 情況 B：備份檔不存在，且玩家啟用了備份。
-                    # 安全地複製一份作為未來的基準線。
-                    shutil.copy2(img_path, backup_img_path)
-                # 情況 C：若無備份且未啟用，則完全尊重設定，直接使用原本的 img_path 進行處理。
-                # ----------------------------------------
-                
-                with Image.open(source_to_read) as img:
-                    img = img.convert("RGBA")
-                    # 🛡️ 路由分流：將 UI 傳來的 mode 對應到核心策略代號
-                    if mode == "pendulum":
-                        strategy_mode = "MODE_PENDULUM_PAD"
-                    elif mode == "pendulum_orig":
-                        strategy_mode = "MODE_PENDULUM_ORIGINAL_CROP"
-                    else:
-                        strategy_mode = "MODE_OVERFRAME"
-                        
-                    options = {"pad_pct": pad_pct, "opacities": opacities}
-                    new_img = MDEngine.process_texture_image(img, img_name, card_dict, strategy_mode, options)
-                        
-                temp_path = f"{img_path}_tmp.png"
-                new_img.save(temp_path, format="PNG")
-                os.replace(temp_path, img_path)
-                success += 1
-                
-            finish_cb(True, success, None)
+            errors = []
+            with concurrent.futures.ProcessPoolExecutor(max_workers=MDEngine.get_optimal_workers(), initializer=_init_worker, initargs=(UI_LANG_DICT,)) as executor:
+                futures = [executor.submit(MDEngine._worker_post_process_single, t) for t in tasks]
+                for future in concurrent.futures.as_completed(futures):
+                    count += 1
+                    if progress_cb: progress_cb(count)
+                    try: 
+                        tgt_name, is_ok, err_msg = future.result()
+                        if is_ok: success += 1
+                        else: errors.append(f"{tgt_name}: {err_msg}")
+                    except Exception as e: 
+                        errors.append(_("處理失敗: {error}").format(error=str(e)))
+
+            # 🛡️ 將收集到的錯誤字串往上拋
+            err_report = "\n".join(errors) if errors else None
+            finish_cb(True, success, err_report)
         except Exception as e: 
             finish_cb(False, str(e), traceback.format_exc())
 
@@ -4519,6 +5068,347 @@ class BaseTab(QWidget):
         if form_layout is not None: form_layout.addRow(cb)
         return cb
 
+class SearchFilterSignals(QObject):
+    search_requested = Signal(dict)
+    page_display_updated = Signal(list) # ✨ 新增：0ms 切片更新訊號
+    add_current_page_requested = Signal(list)
+    add_all_results_requested = Signal(list)
+
+class GoogleSearchFilterWidget(QWidget):
+    def __init__(self, config_manager, enable_batch_add=True, parent=None):
+        super().__init__(parent)
+        self.config = config_manager
+        self.signals = SearchFilterSignals()
+        self.enable_batch_add = enable_batch_add
+        
+        # 記憶體分頁快取
+        self.all_matches = []
+        self.current_page = 1
+        self.total_pages = 1
+        
+        self.init_ui()
+        self.update_badge_and_state()
+
+    def init_ui(self):
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # --- 第一列：主搜尋列 ---
+        h_top = QHBoxLayout()
+        
+        lbl_lang = QLabel(_("對照語系:"))
+        lbl_lang.setMinimumWidth(70)
+
+        self.cb_lang = QComboBox()
+        self.cb_lang.setMinimumWidth(100)
+        self.cb_lang.addItems(["zh-tw", "zh-cn", "en-us", "ja-jp"])
+        self.cb_lang.setEditable(True)
+        self.cb_lang.setCurrentText(self.config.get("search_lang", "zh-tw"))
+        self.cb_lang.currentTextChanged.connect(self._on_lang_changed)
+        
+        # 阻擋滾輪，必須定義在內部或呼叫外部輔助
+        self.cb_lang.wheelEvent = lambda event: event.ignore()
+
+        self.edit_search = QLineEdit()
+        self.edit_search.setMinimumWidth(180)
+        self.edit_search.setPlaceholderText(_("🔍 輸入 ID/名稱/效果/Hash/語法 (+, -, \"\")..."))
+        
+        self.search_timer = QTimer(self)
+        self.search_timer.setSingleShot(True)
+        self.search_timer.timeout.connect(self.trigger_search)
+        self.edit_search.textChanged.connect(lambda dummy_text: self.search_timer.start(300))
+        
+        btn_clear = QPushButton(_("✕"))
+        btn_clear.setFixedWidth(30)
+        btn_clear.clicked.connect(self.edit_search.clear)
+        
+        self.btn_toggle_filter = QPushButton(_("⚙️ 篩選"))
+        self.btn_toggle_filter.setCheckable(True)
+        self.btn_toggle_filter.clicked.connect(self.toggle_filter_panel)
+        
+        h_top.addWidget(lbl_lang)
+        h_top.addWidget(self.cb_lang)
+        h_top.addWidget(self.edit_search, 1)
+        h_top.addWidget(btn_clear)
+        h_top.addWidget(self.btn_toggle_filter)
+        main_layout.addLayout(h_top)
+        
+        # --- 第二列：收納式篩選面板 ---
+        self.panel_filter = QWidget()
+        v_panel = QVBoxLayout(self.panel_filter)
+        v_panel.setContentsMargins(5, 5, 5, 5)
+        
+        # 怪獸區
+        grp_monster = QGroupBox(_("怪獸 (Monster)"))
+        grid_m = QGridLayout(grp_monster)
+        self.chk_m_enable = QCheckBox(_("啟用怪獸")); self.chk_m_enable.setStyleSheet("color: #2CC985;")
+        self.chk_m_eff = QCheckBox(_("效果")); self.chk_m_norm = QCheckBox(_("通常")); self.chk_m_fus = QCheckBox(_("融合")); self.chk_m_syn = QCheckBox(_("同步"))
+        self.chk_m_xyz = QCheckBox(_("超量")); self.chk_m_link = QCheckBox(_("連結")); self.chk_m_rit = QCheckBox(_("儀式")); self.chk_m_pen = QCheckBox(_("靈擺")); self.chk_m_tok = QCheckBox(_("衍生物"))
+        grid_m.addWidget(self.chk_m_enable, 0, 0); grid_m.addWidget(self.chk_m_eff, 0, 1); grid_m.addWidget(self.chk_m_norm, 0, 2); grid_m.addWidget(self.chk_m_fus, 0, 3); grid_m.addWidget(self.chk_m_syn, 0, 4)
+        grid_m.addWidget(self.chk_m_xyz, 1, 1); grid_m.addWidget(self.chk_m_link, 1, 2); grid_m.addWidget(self.chk_m_rit, 1, 3); grid_m.addWidget(self.chk_m_pen, 1, 4); grid_m.addWidget(self.chk_m_tok, 1, 5)
+        
+        # 魔法區
+        grp_spell = QGroupBox(_("魔法 (Spell)"))
+        h_s = QHBoxLayout(grp_spell)
+        self.chk_s_enable = QCheckBox(_("啟用魔法")); self.chk_s_enable.setStyleSheet("color: #4AA4FF;")
+        self.chk_s_norm = QCheckBox(_("通常")); self.chk_s_qp = QCheckBox(_("速攻")); self.chk_s_cont = QCheckBox(_("永續")); self.chk_s_field = QCheckBox(_("場地")); self.chk_s_equip = QCheckBox(_("裝備")); self.chk_s_rit = QCheckBox(_("儀式"))
+        for w in [self.chk_s_enable, self.chk_s_norm, self.chk_s_qp, self.chk_s_cont, self.chk_s_field, self.chk_s_equip, self.chk_s_rit]: h_s.addWidget(w)
+        
+        # 陷阱區
+        grp_trap = QGroupBox(_("陷阱 (Trap)"))
+        h_t = QHBoxLayout(grp_trap)
+        self.chk_t_enable = QCheckBox(_("啟用陷阱")); self.chk_t_enable.setStyleSheet("color: #FF5A9B;")
+        self.chk_t_norm = QCheckBox(_("通常")); self.chk_t_count = QCheckBox(_("反制")); self.chk_t_cont = QCheckBox(_("永續"))
+        for w in [self.chk_t_enable, self.chk_t_norm, self.chk_t_count, self.chk_t_cont]: h_t.addWidget(w)
+        
+        # 輔助與進階區
+        grp_adv = QGroupBox(_("🛠️ 輔助與進階設定"))
+        v_adv = QVBoxLayout(grp_adv)
+        
+        h_adv1 = QHBoxLayout()
+        self.chk_visual = QCheckBox(_("⚠️ 僅處理場地/卡套/頭像等物件")); self.chk_visual.setStyleSheet("color: #E0C030; font-weight: bold;")
+        self.chk_visual.setChecked(self.config.get("enable_visual_only_filter", False))
+        btn_reset = QPushButton(_("🔄 重設所有篩選條件")); btn_reset.clicked.connect(self.reset_filters)
+        h_adv1.addWidget(self.chk_visual); h_adv1.addStretch(); h_adv1.addWidget(btn_reset)
+        
+        h_adv2 = QHBoxLayout()
+        self.edit_inc = QLineEdit(); self.edit_inc.setPlaceholderText(_("必須包含 (+)..."))
+        self.edit_exc = QLineEdit(); self.edit_exc.setPlaceholderText(_("不能包含 (-)..."))
+        h_adv2.addWidget(QLabel(_("必須包含 (+):"))); h_adv2.addWidget(self.edit_inc)
+        h_adv2.addWidget(QLabel(_("不能包含 (-):"))); h_adv2.addWidget(self.edit_exc)
+        
+        h_adv3 = QHBoxLayout()
+        self.chk_fuzzy_name = QCheckBox(_("卡名模糊")); self.chk_fuzzy_desc = QCheckBox(_("效果文模糊"))
+        self.cb_page_limit = QComboBox()
+        limit_options = [
+            ("50", 50),
+            ("100", 100),
+            ("200", 200),
+            ("500", 500),
+            ("1000", 1000),
+            (_("全部 (All)"), 999999)
+        ]
+        for display_text, val in limit_options:
+            self.cb_page_limit.addItem(display_text, val)
+
+        self.cb_page_limit.setEditable(True)
+        self.cb_page_limit.setCurrentText("200")
+        self.cb_page_limit.wheelEvent = lambda event: event.ignore()
+        h_adv3.addWidget(QLabel(_("容錯比對:"))); h_adv3.addWidget(self.chk_fuzzy_name); h_adv3.addWidget(self.chk_fuzzy_desc)
+        h_adv3.addStretch(); h_adv3.addWidget(QLabel(_("單頁顯示上限:"))); h_adv3.addWidget(self.cb_page_limit)
+        
+        v_adv.addLayout(h_adv1); v_adv.addLayout(h_adv2); v_adv.addLayout(h_adv3)
+        
+        v_panel.addWidget(grp_monster); v_panel.addWidget(grp_spell); v_panel.addWidget(grp_trap); v_panel.addWidget(grp_adv)
+        self.panel_filter.setVisible(False)
+        main_layout.addWidget(self.panel_filter)
+        
+        # --- 第三列：分頁導覽列 ---
+        self.nav_bar = QWidget()
+        h_nav = QHBoxLayout(self.nav_bar)
+        h_nav.setContentsMargins(0, 5, 0, 0)
+        
+        self.btn_prev = QPushButton(_("◀ 上一頁")); self.btn_prev.clicked.connect(self.prev_page)
+        self.lbl_page_info = QLabel(_("第 1 / 1 頁 (共 0 筆)")); self.lbl_page_info.setAlignment(Qt.AlignCenter)
+        self.btn_next = QPushButton(_("下一頁 ▶")); self.btn_next.clicked.connect(self.next_page)
+        
+        h_nav.addWidget(self.btn_prev); h_nav.addWidget(self.lbl_page_info, 1); h_nav.addWidget(self.btn_next)
+        
+        if self.enable_batch_add:
+            self.btn_add_page = QPushButton(_("＋ 加入本頁全部")); self.btn_add_page.clicked.connect(self.add_current_page)
+            self.btn_add_all = QPushButton(_("＋ 加入全部搜尋結果")); self.btn_add_all.clicked.connect(self.add_all_results)
+            self.btn_add_page.setStyleSheet("color: #4AA4FF; font-weight: bold;")
+            self.btn_add_all.setStyleSheet("color: #FF5A9B; font-weight: bold;")
+            h_nav.addWidget(self.btn_add_page); h_nav.addWidget(self.btn_add_all)
+            
+        main_layout.addWidget(self.nav_bar)
+
+        # 綁定事件觸發搜尋與徽章更新
+        all_checks = [
+            self.chk_m_enable, self.chk_m_eff, self.chk_m_norm, self.chk_m_fus, self.chk_m_syn, self.chk_m_xyz, self.chk_m_link, self.chk_m_rit, self.chk_m_pen, self.chk_m_tok,
+            self.chk_s_enable, self.chk_s_norm, self.chk_s_qp, self.chk_s_cont, self.chk_s_field, self.chk_s_equip, self.chk_s_rit,
+            self.chk_t_enable, self.chk_t_norm, self.chk_t_count, self.chk_t_cont,
+            self.chk_visual, self.chk_fuzzy_name, self.chk_fuzzy_desc
+        ]
+        for cb in all_checks:
+            cb.toggled.connect(lambda dummy_state: self.update_badge_and_state())
+            
+        self.edit_inc.textChanged.connect(lambda dummy_text: self.update_badge_and_state())
+        self.edit_exc.textChanged.connect(lambda dummy_text: self.update_badge_and_state())
+        self.cb_page_limit.currentTextChanged.connect(lambda dummy_text: self.update_badge_and_state())
+
+    def _get_current_limit(self):
+        """
+        DRY 核心解析器：支援真・多語系解耦與自訂數值防禦
+        """
+        # 1. 優先判定：是否選取了下拉選項（透過 itemData 綁定的整數值）
+        data_val = self.cb_page_limit.currentData()
+        current_text = self.cb_page_limit.currentText().strip()
+        current_idx = self.cb_page_limit.currentIndex()
+        
+        if isinstance(data_val, int) and data_val > 0:
+            # 確保目前輸入框文字確實等於該項目的顯示文字（防止使用者手動輸入其他字但 index 未變）
+            if current_idx >= 0 and current_text == self.cb_page_limit.itemText(current_idx).strip():
+                return data_val
+
+        # 2. 多語系防線：若文字與翻譯標籤完全相符（或預設繁中/英文）
+        if current_text in (_("全部 (All)"), "全部 (All)", "All", "全部"):
+            return 999999
+
+        # 3. 使用者手動輸入純數字（強制至少為 1，100% 杜絕 ZeroDivisionError）
+        if current_text.isdigit():
+            return max(1, int(current_text))
+
+        # 4. 防呆預設值
+        return 200
+
+    def _on_lang_changed(self, text):
+        self.config.set("search_lang", text.strip().lower())
+        self.trigger_search()
+
+    def toggle_filter_panel(self):
+        self.panel_filter.setVisible(self.btn_toggle_filter.isChecked())
+
+    def reset_filters(self):
+        self.chk_m_enable.setChecked(False); self.chk_s_enable.setChecked(False); self.chk_t_enable.setChecked(False)
+        for cb in [self.chk_m_eff, self.chk_m_norm, self.chk_m_fus, self.chk_m_syn, self.chk_m_xyz, self.chk_m_link, self.chk_m_rit, self.chk_m_pen, self.chk_m_tok,
+                   self.chk_s_norm, self.chk_s_qp, self.chk_s_cont, self.chk_s_field, self.chk_s_equip, self.chk_s_rit,
+                   self.chk_t_norm, self.chk_t_count, self.chk_t_cont]: cb.setChecked(False)
+        self.chk_visual.setChecked(False)
+        self.edit_inc.clear()
+        self.edit_exc.clear()
+        self.chk_fuzzy_name.setChecked(False); self.chk_fuzzy_desc.setChecked(False)
+        self.cb_page_limit.setCurrentText("200")
+        self.update_badge_and_state()
+
+    def update_badge_and_state(self):
+        # 統計非預設條件
+        active_count = 0
+        if self.chk_m_enable.isChecked() or self.chk_s_enable.isChecked() or self.chk_t_enable.isChecked(): active_count += 1
+        if any(cb.isChecked() for cb in [self.chk_m_eff, self.chk_m_norm, self.chk_m_fus, self.chk_m_syn, self.chk_m_xyz, self.chk_m_link, self.chk_m_rit, self.chk_m_pen, self.chk_m_tok]): active_count += 1
+        if any(cb.isChecked() for cb in [self.chk_s_norm, self.chk_s_qp, self.chk_s_cont, self.chk_s_field, self.chk_s_equip, self.chk_s_rit]): active_count += 1
+        if any(cb.isChecked() for cb in [self.chk_t_norm, self.chk_t_count, self.chk_t_cont]): active_count += 1
+        if self.chk_visual.isChecked(): active_count += 1
+        if self.edit_inc.text().strip(): active_count += 1
+        if self.edit_exc.text().strip(): active_count += 1
+        if self.chk_fuzzy_name.isChecked(): active_count += 1
+        if self.chk_fuzzy_desc.isChecked(): active_count += 1
+
+        if active_count > 0:
+            self.btn_toggle_filter.setText(_("⚙️ 篩選 (已套用: {count})").format(count=active_count))
+            theme_color = self.config.get("ui_theme_color", "#2CC985")
+            self.btn_toggle_filter.setStyleSheet(f"color: {theme_color}; font-weight: bold;")
+        else:
+            self.btn_toggle_filter.setText(_("⚙️ 篩選"))
+            self.btn_toggle_filter.setStyleSheet("")
+            
+        self.config.set("enable_visual_only_filter", self.chk_visual.isChecked())
+        self.trigger_search()
+
+    def get_search_params(self):
+        limit = self._get_current_limit()
+        
+        m_subs = []
+        if self.chk_m_eff.isChecked(): m_subs.append("效果")
+        if self.chk_m_norm.isChecked(): m_subs.append("通常")
+        if self.chk_m_fus.isChecked(): m_subs.append("融合")
+        if self.chk_m_syn.isChecked(): m_subs.append("同步")
+        if self.chk_m_xyz.isChecked(): m_subs.append("超量")
+        if self.chk_m_link.isChecked(): m_subs.append("連結")
+        if self.chk_m_rit.isChecked(): m_subs.append("儀式")
+        if self.chk_m_tok.isChecked(): m_subs.append("衍生物")
+        
+        s_subs = []
+        if self.chk_s_norm.isChecked(): s_subs.append("通常")
+        if self.chk_s_qp.isChecked(): s_subs.append("速攻")
+        if self.chk_s_cont.isChecked(): s_subs.append("永續")
+        if self.chk_s_field.isChecked(): s_subs.append("場地")
+        if self.chk_s_equip.isChecked(): s_subs.append("裝備")
+        if self.chk_s_rit.isChecked(): s_subs.append("儀式")
+        
+        t_subs = []
+        if self.chk_t_norm.isChecked(): t_subs.append("通常")
+        if self.chk_t_count.isChecked(): t_subs.append("反制")
+        if self.chk_t_cont.isChecked(): t_subs.append("永續")
+
+        # 👈 只要有勾選子標籤或靈擺，就自動視為主開關啟用，體驗更直覺
+        m_enabled = self.chk_m_enable.isChecked() or bool(m_subs) or self.chk_m_pen.isChecked()
+        s_enabled = self.chk_s_enable.isChecked() or bool(s_subs)
+        t_enabled = self.chk_t_enable.isChecked() or bool(t_subs)
+
+        return {
+            "query": self.edit_search.text().strip(),
+            "visual_only": self.chk_visual.isChecked(),
+            "inc_words": self.edit_inc.text().strip(),
+            "exc_words": self.edit_exc.text().strip(),
+            "fuzzy_name": self.chk_fuzzy_name.isChecked(),
+            "fuzzy_desc": self.chk_fuzzy_desc.isChecked(),
+            "limit_per_page": limit,
+            "filters": {
+                "怪獸": {"enabled": m_enabled, "pendulum": self.chk_m_pen.isChecked(), "subs": m_subs},
+                "魔法": {"enabled": s_enabled, "subs": s_subs},
+                "陷阱": {"enabled": t_enabled, "subs": t_subs}
+            }
+        }
+
+    def trigger_search(self):
+        self.current_page = 1 # 重置頁碼
+        self.signals.search_requested.emit(self.get_search_params())
+
+    def update_pagination_ui(self, all_matches_data, limit_per_page):
+        self.all_matches = all_matches_data
+        self.current_page = 1 # 重新搜尋後強制作為第一頁
+        total_hits = len(self.all_matches)
+        
+        if limit_per_page >= total_hits:
+            self.total_pages = 1
+        else:
+            self.total_pages = (total_hits + limit_per_page - 1) // limit_per_page
+            
+        if self.enable_batch_add:
+            self.btn_add_all.setText(_("＋ 加入全部 {hits} 筆").format(hits=total_hits))
+            
+        self._refresh_page_display(limit_per_page)
+
+    def prev_page(self):
+        if self.current_page > 1:
+            self.current_page -= 1
+            self._refresh_page_display(self._get_current_limit())
+
+    def next_page(self):
+        if self.current_page < self.total_pages:
+            self.current_page += 1
+            self._refresh_page_display(self._get_current_limit())
+
+    def _refresh_page_display(self, limit_per_page):
+        # 核心：0ms 記憶體切片並發送更新訊號，不重新檢索資料庫
+        total_hits = len(self.all_matches)
+        self.lbl_page_info.setText(_("第 {curr} / {total} 頁 (共 {hits} 筆)").format(curr=self.current_page, total=self.total_pages, hits=total_hits))
+        self.btn_prev.setEnabled(self.current_page > 1)
+        self.btn_next.setEnabled(self.current_page < self.total_pages)
+
+        start_idx = (self.current_page - 1) * limit_per_page
+        end_idx = start_idx + limit_per_page
+        page_slice = self.all_matches[start_idx:end_idx]
+        
+        self.signals.page_display_updated.emit(page_slice)
+
+    def add_current_page(self):
+        self.signals.add_current_page_requested.emit(self._get_current_page_slice())
+
+    def add_all_results(self):
+        total = len(self.all_matches)
+        if total >= 1000:
+            reply = QMessageBox.question(self, _("危險操作警告"), _("搜尋結果共 {count} 筆，全數加入可能會使下方提取清單過長。\n確定要將全部 {count} 筆卡片加入清單嗎？").format(count=total), QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if reply == QMessageBox.No: return
+        self.signals.add_all_results_requested.emit(self.all_matches)
+
+    def _get_current_page_slice(self):
+        limit = self._get_current_limit()
+        start_idx = (self.current_page - 1) * limit
+        end_idx = start_idx + limit
+        return self.all_matches[start_idx:end_idx]
+
 # ==================== 分頁 0: 新手指南 ====================
 class TabGuide(BaseTab):
     def __init__(self, main_app):
@@ -4834,23 +5724,12 @@ class TabFind(BaseTab):
         grp2 = QGroupBox(_("物件搜尋與提取清單"))
         vbox2 = QVBoxLayout(grp2)
 
-        box_search = QHBoxLayout()
-        self.cb_lang = QComboBox()
-        self.cb_lang.addItems(["zh-tw", "zh-cn", "en-us", "ja-jp"])
-        self.cb_lang.setEditable(True) # 允許玩家自己打自訂語系
-        self.cb_lang.setCurrentText(self.config.get("search_lang", "zh-tw"))
-        self.cb_lang.currentTextChanged.connect(lambda t: [self.config.set("search_lang", t), self.update_listbox()])
-        self.block_wheelEvent(self.cb_lang)
-        
-        self.t2_search = QLineEdit(); self.t2_search.setPlaceholderText(_("搜尋 ID/名稱/效果..."))
-        self.t2_search_timer = QTimer(self); self.t2_search_timer.setSingleShot(True)
-        self.t2_search_timer.timeout.connect(self.update_listbox)
-        self.t2_search.textChanged.connect(lambda t: self.t2_search_timer.start(300))
-
-        box_search.addWidget(QLabel(_("對照語系:"))); box_search.addWidget(self.cb_lang)
-        box_search.addWidget(self.t2_search)
-        box_search.addWidget(self.bind_visual_filter())
-        vbox2.addLayout(box_search) # 把原本單獨塞 t2_search 的地方換成 addLayout(box_search)
+        self.search_widget = GoogleSearchFilterWidget(self.config, enable_batch_add=True)
+        self.search_widget.signals.search_requested.connect(self.execute_advanced_search)
+        self.search_widget.signals.page_display_updated.connect(self.update_list_display)
+        self.search_widget.signals.add_current_page_requested.connect(lambda page_list: self.append_to_extraction_list("\n".join(page_list)))
+        self.search_widget.signals.add_all_results_requested.connect(lambda all_list: self.append_to_extraction_list("\n".join(all_list)))
+        vbox2.addWidget(self.search_widget)
         
         self.t2_list = QListWidget()
         self.t2_list.setMinimumHeight(250)
@@ -4898,7 +5777,7 @@ class TabFind(BaseTab):
         self.t2_text.setMinimumHeight(200) # 👈 高度增加至 200px
         self.prevent_scroll_propagation(self.t2_text)
         self.bind_text("t2_extraction_list", self.t2_text)
-        vbox2.addWidget(self.t2_search); vbox2.addWidget(self.t2_list); vbox2.addWidget(btn_add); vbox2.addLayout(box_ctrl); vbox2.addWidget(self.t2_text)
+        vbox2.addWidget(self.t2_list); vbox2.addWidget(btn_add); vbox2.addLayout(box_ctrl); vbox2.addWidget(self.t2_text)
         self.layout.addWidget(grp2)
         
         # 👈 底部大按鈕
@@ -4914,12 +5793,24 @@ class TabFind(BaseTab):
         combined = (current_text + "\n" + new_text).strip()
         self.t2_text.setPlainText(combined)
 
-    def update_listbox(self):
-        self.t2_list.clear()
+    def execute_advanced_search(self, params):
         dummy_map, db = MDEngine.get_csv_data(clean_path(self.config.get("t2_csv_dir")))
-        # 🛡️ 修正：將 visual_only 正確放入函數參數中，避免語法崩潰
-        for item in MDEngine.search_cards(self.t2_search.text().strip().lower(), db, self.config.get("search_lang", "zh-tw"), visual_only=self.config.get("enable_visual_only_filter", True)): 
-            self.t2_list.addItem(item)     
+        # ✨ 接收全量清單
+        all_matches = MDEngine.search_cards_advanced(params, db, search_lang=self.config.get("search_lang", "zh-tw"))
+        # 交付給 Widget 處理切片與分頁
+        self.search_widget.update_pagination_ui(all_matches, params.get("limit_per_page", 200))
+
+    def update_list_display(self, page_slice):
+        # ✨ 0ms 瞬間更新 UI
+        self.t2_list.clear()
+        for item in page_slice:
+            self.t2_list.addItem(item)
+
+    def append_to_extraction_list(self, text_to_add):
+        if not text_to_add: return
+        current_text = self.t2_text.toPlainText().strip()
+        combined = (current_text + "\n" + text_to_add).strip() if current_text else text_to_add
+        self.t2_text.setPlainText(combined) 
 
     def load_txt(self):
         try:
@@ -5054,17 +5945,46 @@ class TabFind(BaseTab):
             if not targets:
                 return QMessageBox.warning(self, _("警告"), _("提取後沒有找到符合 ID 的圖片。"))
             
-            opacities = {
-                "periframe": float(c.get("t8_op_periframe", 1.0)), "namebox": float(c.get("t8_op_namebox", 1.0)),
-                "artframe": float(c.get("t8_op_artframe", 1.0)), "effframe": float(c.get("t8_op_effframe", 1.0)),
-                "effbox": float(c.get("t8_op_effbox", 1.0)), "background": float(c.get("t8_op_background", 1.0))
+            full_options = {
+                "opacities": {
+                    "periframe": float(c.get("t8_op_periframe", 1.0)), "namebox": float(c.get("t8_op_namebox", 1.0)),
+                    "artframe": float(c.get("t8_op_artframe", 1.0)), "effframe": float(c.get("t8_op_effframe", 1.0)),
+                    "effbox": float(c.get("t8_op_effbox", 1.0)), "background": float(c.get("t8_op_background", 1.0))
+                },
+                "ch_x": c.get("t8_adv_ch_x", 0), "ch_y": c.get("t8_adv_ch_y", 0), "ch_s": c.get("t8_adv_ch_s", 100), "ch_rot": c.get("t8_adv_ch_rot", 0),
+                "bg_x": c.get("t8_adv_bg_x", 0), "bg_y": c.get("t8_adv_bg_y", 0), "bg_s": c.get("t8_adv_bg_s", 100), "bg_rot": c.get("t8_adv_bg_rot", 0),
+                "bg_color": c.get("t8_adv_bg_color", "#FF000000"),
+                "z_order": c.get("t8_adv_z_order", ["CH_LAYER", "PeriFrame", "NameBox", "EffFrame", "ArtFrame", "EffBox", "BackGround", "BG_LAYER"]),
+                "masks": {
+                    cat: {
+                        p: c.get(f"t8_{prefix}_{p}", d)
+                        for p, d in zip(
+                            ["PeriFrame", "NameBox", "ArtFrame", "EffFrame", "EffBox", "BackGround"],
+                            [True, False, True, True, False, False]
+                        )
+                    }
+                    for cat, prefix in [("prev", "foil_prev"), ("bake", "foil_bake"), ("dirty", "adv_mask")]
+                },
+                "foil_params": {
+                    "sim_enable": c.get("t8_adv_foil_sim", False),
+                    "bake_enable": c.get("t8_foil_bake_enable", False),
+                    "palette": c.get("t8_foil_palette", "PALETTE_OPAL"),
+                    "base_light": c.get("t8_foil_base_light", 40),
+                    "sharpness": c.get("t8_foil_sharpness", 10),
+                    "blend_mode": c.get("t8_foil_blend_mode", "BLEND_SOFT"),
+                    "intensity": c.get("t8_foil_intensity", 100),
+                    "saturation": c.get("t8_foil_saturation", 120),
+                    "frequency": c.get("t8_foil_frequency", 10.0),
+                    "angle": c.get("t8_foil_angle", 45)
+                },
+                "is_preview": False
             }
             
             bk_folder = c.get("t8_backup_folder", "").strip() or "修改前原檔"
             bk_dir_img = os.path.join(mod_dir, bk_folder)
             
             self.app.execute_task((self.btn_run_top, self.btn_run_bottom), _("[自動化] 超框處理中"), MDEngine.task_post_process,
-                (mod_dir, bk_dir_img, c.get("t8_enable_backup"), int(self.get_safe_int("t8_padding_pct", 25)), targets, "quick_overframe", clean_path(c.get("t2_csv_dir")), opacities), step3_process_done, is_chain=True)
+                (mod_dir, bk_dir_img, c.get("t8_enable_backup"), int(self.get_safe_int("t8_padding_pct", 25)), targets, "quick_overframe", clean_path(c.get("t2_csv_dir")), full_options), step3_process_done, is_chain=True)
 
         def step3_process_done(s, ct, e):
             if not s: return QMessageBox.critical(self, _("錯誤"), _("超框處理失敗: ") + str(ct))
@@ -5288,11 +6208,11 @@ class TabPendulum(BaseTab):
             form_op.addRow(label_text, box)
 
         add_op_row(_("外框 (PeriFrame):"), "t8_op_periframe")
-        add_op_row(_("名條 (NameBox):"), "t8_op_namebox")
+        add_op_row(_("卡名欄 (NameBox):"), "t8_op_namebox")
         add_op_row(_("卡圖框 (ArtFrame):"), "t8_op_artframe")
         add_op_row(_("效果框 (EffFrame):"), "t8_op_effframe")
-        add_op_row(_("效果欄 (EffBox):"), "t8_op_effbox")
-        add_op_row(_("底圖/背景 (BackGround):"), "t8_op_background")
+        add_op_row(_("效果文字欄 (EffBox):"), "t8_op_effbox")
+        add_op_row(_("卡底背景 (BackGround):"), "t8_op_background")
         self.layout.addWidget(self.grp_op)
 
         # ─── 動態雙重控制項輔助器 (DRY) ───
@@ -5325,35 +6245,135 @@ class TabPendulum(BaseTab):
             target_layout.addRow(lbl_text, box)
             
             # 連動預覽
-            sl.valueChanged.connect(lambda dummy_val: self.preview_timer.start())
+            sl.valueChanged.connect(lambda dummy_val: self.preview_timer.start() if hasattr(self, 'preview_timer') else None)
             sp._slider = sl
             return sp
 
-        # ─── 3. 素材與畫布設定區 (僅動畫) ───
-        self.grp_c_canvas = QGroupBox(_("素材與畫布設定區"))
-        form_c_canvas = QFormLayout(self.grp_c_canvas)
-        self.c_hd_size = QComboBox(); self.c_hd_size.addItems(["FHD 1920x1080", "HD 1280x720"])
-        self.c_hd_size.setCurrentText(self.config.get("c_hd_res", "HD 1280x720"))
-        self.c_hd_size.currentTextChanged.connect(lambda t: [self.config.set("c_hd_res", t), self.preview_timer.start()])
-        cb_disk_cache = self.bind_check("use_disk_cache", _("啟用硬碟暫存 (防記憶體溢出)"))
-        cb_disk_cache.setToolTip(_("批次生成圖集時將影格寫入硬碟，適合處理長影片或記憶體小於 8GB 之用戶。"))
-        form_c_canvas.addRow(cb_disk_cache)
+        # ─── 3. 閃卡光澤與遮罩設定 ───
+        self.btn_toggle_foil_studio = QPushButton(_("▼ 閃卡光澤與遮罩設定  [展開]"))
+        self.btn_toggle_foil_studio.setCheckable(True)
+        self.btn_toggle_foil_studio.setChecked(False)
+        self.btn_toggle_foil_studio.setStyleSheet("color: #FF5A9B; font-weight: bold; margin-top: 5px;")
         
-        self.c_fill_mode = QComboBox(); self.c_fill_mode.addItems(["裁切滿版 (Crop Fill)", "等比留邊 (Contain)", "拉伸 (Stretch)"])
-        self.c_fill_mode.setCurrentText(self.config.get("c_fill_mode", "裁切滿版 (Crop Fill)"))
-        self.c_fill_mode.currentTextChanged.connect(lambda t: [self.config.set("c_fill_mode", t), self.preview_timer.start()])
-        self.block_wheelEvent(self.c_hd_size); self.block_wheelEvent(self.c_fill_mode)
+        self.grp_foil_studio = QGroupBox(_("閃卡光澤與遮罩設定"))
+        v_foil = QVBoxLayout(self.grp_foil_studio)
+
+        grid_matrix = QGridLayout()
+        headers = [_("目標部件"), _("預覽模擬 (Preview)"), _("寫入貼圖 (Bake)"), _("透明化遮罩 (Alpha 0)")]
+        for col, text in enumerate(headers):
+            lbl = QLabel(text); lbl.setStyleSheet("color: #2CC985; font-weight: bold;")
+            grid_matrix.addWidget(lbl, 0, col)
+            
+        parts = [
+            ("PeriFrame", _("外框 (PeriFrame)")), ("NameBox", _("卡名欄 (NameBox)")),
+            ("ArtFrame", _("卡圖框 (ArtFrame)")), ("EffFrame", _("效果框 (EffFrame)")),
+            ("EffBox", _("效果文字欄 (EffBox)")), ("BackGround", _("卡底背景 (BackGround)"))
+        ]
         
-        form_c_canvas.addRow(_("HD 目標解析度:"), self.c_hd_size)
-        form_c_canvas.addRow(_("畫布填充模式:"), self.c_fill_mode)
-        self.c_rot = add_dual(_("旋轉角度校正:"), "c_rot", -360, 360, False, "°", form_c_canvas)
-        self.c_off_x = add_dual(_("X 軸平移:"), "c_offset_x", -2000, 2000, False, " px", form_c_canvas)
-        self.c_off_y = add_dual(_("Y 軸平移:"), "c_offset_y", -2000, 2000, False, " px", form_c_canvas)
+        self.matrix_cbs = {"prev": {}, "bake": {}, "dirty": {}}
+        for row, (logic_id, label_text) in enumerate(parts, start=1):
+            grid_matrix.addWidget(QLabel(label_text), row, 0)
+            
+            cb_p = self.bind_check(f"t8_foil_prev_{logic_id}", "")
+            cb_b = self.bind_check(f"t8_foil_bake_{logic_id}", "")
+            cb_d = self.bind_check(f"t8_adv_mask_{logic_id}", "")
+            
+            self.matrix_cbs["prev"][logic_id] = cb_p
+            self.matrix_cbs["bake"][logic_id] = cb_b
+            self.matrix_cbs["dirty"][logic_id] = cb_d
+            
+            for cb in (cb_p, cb_b, cb_d):
+                cb.toggled.connect(lambda dummy_state: self.preview_timer.start() if hasattr(self, 'preview_timer') else None)
+                
+            grid_matrix.addWidget(cb_p, row, 1); grid_matrix.addWidget(cb_b, row, 2); grid_matrix.addWidget(cb_d, row, 3)
+            
+        v_foil.addLayout(grid_matrix)
         
-        lbl_hint = QLabel(_("ℹ️ 提示：SD 規格會自動完美降轉為 854x480 的 16:9 比例，避免變形。"))
-        lbl_hint.setStyleSheet("color: #2CC985;")
-        form_c_canvas.addRow(lbl_hint)
-        self.layout.addWidget(self.grp_c_canvas)
+        h_matrix_btn = QHBoxLayout()
+        btn_std_frames = QPushButton(_("✨ 標準三大框 (推薦)")); btn_std_frames.setStyleSheet("color: #4AA4FF;")
+        def set_std_frames():
+            for cat in ["prev", "bake", "dirty"]:
+                for logic_id, cb in self.matrix_cbs[cat].items():
+                    cb.setChecked(logic_id in ["PeriFrame", "ArtFrame", "EffFrame"])
+        btn_std_frames.clicked.connect(set_std_frames)
+        
+        btn_sync_dirty = QPushButton(_("🔗 同步套用至透明化")); btn_sync_dirty.setStyleSheet("color: #E0C030;")
+        def sync_dirty():
+            for logic_id, cb in self.matrix_cbs["dirty"].items():
+                cb.setChecked(self.matrix_cbs["bake"][logic_id].isChecked())
+        btn_sync_dirty.clicked.connect(sync_dirty)
+        
+        btn_all_true = QPushButton(_("全選")); btn_all_true.clicked.connect(lambda dummy_val=False: [cb.setChecked(True) for cat in self.matrix_cbs.values() for cb in cat.values()])
+        btn_all_false = QPushButton(_("全清")); btn_all_false.clicked.connect(lambda dummy_val=False: [cb.setChecked(False) for cat in self.matrix_cbs.values() for cb in cat.values()])
+        
+        h_matrix_btn.addWidget(btn_std_frames); h_matrix_btn.addWidget(btn_sync_dirty); h_matrix_btn.addWidget(btn_all_true); h_matrix_btn.addWidget(btn_all_false)
+        v_foil.addLayout(h_matrix_btn)
+        
+        form_foil = QFormLayout()
+        
+        self.cb_foil_palette = QComboBox()
+        for disp_name, logic_id in [
+            (_("珍珠粉彩 (Pastel Opal)"), "PALETTE_OPAL"),
+            (_("霓虹光譜 (Vivid Rainbow)"), "PALETTE_RAINBOW"),
+            (_("香檳金 (Champagne Gold)"), "PALETTE_GOLD"),
+            (_("白金鑽 (Platinum Silver)"), "PALETTE_SILVER")
+        ]: self.cb_foil_palette.addItem(disp_name, logic_id)
+        idx_pal = self.cb_foil_palette.findData(self.config.get("t8_foil_palette", "PALETTE_OPAL"))
+        if idx_pal >= 0: self.cb_foil_palette.setCurrentIndex(idx_pal)
+        self.cb_foil_palette.currentIndexChanged.connect(lambda idx: [self.config.set("t8_foil_palette", self.cb_foil_palette.itemData(idx)), self.preview_timer.start() if hasattr(self, 'preview_timer') else None])
+        self.block_wheelEvent(self.cb_foil_palette)
+        form_foil.addRow(_("光譜風格:"), self.cb_foil_palette)
+
+        self.cb_foil_blend = QComboBox()
+        for disp_name, logic_id in [
+            (_("柔光混合 (Soft Blend)"), "BLEND_SOFT"),
+            (_("強光疊加 (Vivid Glow)"), "BLEND_VIVID")
+        ]: self.cb_foil_blend.addItem(disp_name, logic_id)
+        idx_blend = self.cb_foil_blend.findData(self.config.get("t8_foil_blend_mode", "BLEND_SOFT"))
+        if idx_blend >= 0: self.cb_foil_blend.setCurrentIndex(idx_blend)
+        self.cb_foil_blend.currentIndexChanged.connect(lambda idx: [self.config.set("t8_foil_blend_mode", self.cb_foil_blend.itemData(idx)), self.preview_timer.start() if hasattr(self, 'preview_timer') else None])
+        self.block_wheelEvent(self.cb_foil_blend)
+        form_foil.addRow(_("混色模式:"), self.cb_foil_blend)
+
+        self.foil_base_light = add_dual(_("珠光基底明度:"), "t8_foil_base_light", 0, 100, False, " %", form_foil)
+        self.foil_sharpness = add_dual(_("高光聚光度:"), "t8_foil_sharpness", 10, 100, False, "", form_foil)
+        self.foil_intensity = add_dual(_("光澤強度:"), "t8_foil_intensity", 0, 500, False, " %", form_foil)
+        self.foil_intensity.setRange(0, 9999)
+        self.foil_saturation = add_dual(_("色彩濃度/飽和度:"), "t8_foil_saturation", 0, 500, False, " %", form_foil)
+        self.foil_saturation.setRange(0, 9999)
+        self.foil_frequency = add_dual(_("光斑頻率:"), "t8_foil_frequency", 0.1, 100.0, True, "", form_foil)
+        self.foil_frequency.setRange(0.01, 999.0)
+        self.foil_angle = add_dual(_("光照角度:"), "t8_foil_angle", -360, 360, False, " °", form_foil)
+        self.foil_angle.setRange(-360, 360)
+        
+        btn_foil_rst = QPushButton(_("🔄 重設參數"))
+        def reset_foil_params():
+            idx_pal = self.cb_foil_palette.findData(self.config.get("t8_foil_palette", "PALETTE_OPAL"))
+            if idx_pal >= 0: self.cb_foil_palette.setCurrentIndex(idx_pal)
+            idx_blend = self.cb_foil_blend.findData(self.config.get("t8_foil_blend_mode", "BLEND_SOFT"))
+            if idx_blend >= 0: self.cb_foil_blend.setCurrentIndex(idx_blend)
+            
+            self.foil_base_light.setValue(self.config.get("t8_foil_base_light", 60))
+            self.foil_sharpness.setValue(self.config.get("t8_foil_sharpness", 20))
+            self.foil_intensity.setValue(self.config.get("t8_foil_intensity", 200))
+            self.foil_saturation.setValue(self.config.get("t8_foil_saturation", 130))
+            self.foil_frequency.setValue(self.config.get("t8_foil_frequency", 5.0))
+            self.foil_angle.setValue(self.config.get("t8_foil_angle", 60))
+            if hasattr(self, 'preview_timer'): self.preview_timer.start()
+            
+        btn_foil_rst.clicked.connect(lambda dummy_val=False: reset_foil_params())
+        form_foil.addRow(btn_foil_rst)
+        
+        v_foil.addLayout(form_foil)
+        
+        self.btn_toggle_foil_studio.toggled.connect(lambda checked: [
+            self.grp_foil_studio.setVisible(checked),
+            self.btn_toggle_foil_studio.setText(_("▲ 閃卡光澤與遮罩設定  [收合]") if checked else _("▼ 閃卡光澤與遮罩設定  [展開]"))
+        ])
+        
+        self.layout.addWidget(self.btn_toggle_foil_studio)
+        self.grp_foil_studio.hide()
+        self.layout.addWidget(self.grp_foil_studio)
 
         # ─── 4. 統一即時預覽畫布區 (超框/動畫共用) ───
         self.btn_toggle_preview = QPushButton(_("👁️ 展開/隱藏 即時預覽面板"))
@@ -5371,20 +6391,143 @@ class TabPendulum(BaseTab):
         h_prev_path = QHBoxLayout()
         self.edit_prev_path = QLineEdit()
         self.edit_prev_path.setPlaceholderText(_("請選擇測試圖片或素材 (動畫後處理支援 PSD/MP4/GIF/靜態圖)"))
-        btn_prev_browse = QPushButton(_("瀏覽")); btn_prev_browse.clicked.connect(self.browse_preview)
-        h_prev_path.addWidget(QLabel(_("測試圖片/素材:"))); h_prev_path.addWidget(self.edit_prev_path); h_prev_path.addWidget(btn_prev_browse)
+        btn_prev_browse = QPushButton(_("📂 瀏覽")); btn_prev_browse.clicked.connect(self.browse_preview)
+        h_prev_path.addWidget(QLabel(_("測試素材:"))); h_prev_path.addWidget(self.edit_prev_path); h_prev_path.addWidget(btn_prev_browse)
         v_prev.addLayout(h_prev_path)
 
         self.lbl_preview = QLabel(_("載入素材後將在此顯示預覽 (處理中請勿頻繁切換分頁)"))
         self.lbl_preview.setAlignment(Qt.AlignCenter); self.lbl_preview.setMinimumHeight(400)
         self.lbl_preview.setStyleSheet("background-color: #1A1A1A; border: 1px dashed #444; border-radius: 8px;")
         v_prev.addWidget(self.lbl_preview)
+        self.chk_foil_sim = self.bind_check("t8_adv_foil_sim", _("模擬遊戲內閃卡光澤"))
+        self.chk_foil_sim.setStyleSheet("color: #4AA4FF; font-weight: bold;")
+        self.chk_foil_sim.toggled.connect(lambda dummy_state: self.preview_timer.start() if hasattr(self, 'preview_timer') else None)
+        v_prev.addWidget(self.chk_foil_sim)
         self.layout.addWidget(self.preview_widget)
 
         self.preview_timer = QTimer(self); self.preview_timer.setInterval(200); self.preview_timer.setSingleShot(True)
         self.preview_timer.timeout.connect(self.update_preview)
         self.edit_prev_path.textChanged.connect(lambda dummy_val: self.preview_timer.start())
         self.cb_mode.currentTextChanged.connect(lambda dummy_val: self.preview_timer.start())
+
+        # ─── 5. 進階雙圖層超框工坊 ───
+        self.btn_toggle_adv = QPushButton(_("▼ 進階雙圖層超框工坊  [展開]"))
+        self.btn_toggle_adv.setCheckable(True); self.btn_toggle_adv.setChecked(False)
+        self.btn_toggle_adv.setStyleSheet("color: #E0C030; font-weight: bold; margin-top: 5px;")
+        self.btn_toggle_adv.toggled.connect(lambda checked: [
+            self.grp_adv_studio.setVisible(checked),
+            self.btn_toggle_adv.setText(_("▲ 進階雙圖層超框工坊  [收合]") if checked else _("▼ 進階雙圖層超框工坊  [展開]"))
+        ])
+        self.layout.addWidget(self.btn_toggle_adv)
+
+        self.grp_adv_studio = QWidget()
+        v_adv = QVBoxLayout(self.grp_adv_studio)
+
+        grp_ch = QGroupBox(_("角色圖層設定 (-ch)")); form_ch = QFormLayout(grp_ch)
+        self.adv_ch_x = add_dual(_("X 軸平移:"), "t8_adv_ch_x", -2000, 2000, False, " px", form_ch)
+        self.adv_ch_y = add_dual(_("Y 軸平移:"), "t8_adv_ch_y", -2000, 2000, False, " px", form_ch)
+        self.adv_ch_s = add_dual(_("縮放比例:"), "t8_adv_ch_s", 1, 500, False, " %", form_ch)
+        self.adv_ch_rot = add_dual(_("旋轉角度:"), "t8_adv_ch_rot", -360, 360, False, " °", form_ch)
+        btn_reset_ch = QPushButton(_("🔄 重設參數"))
+        btn_reset_ch.clicked.connect(lambda dummy_val=False: [self.adv_ch_x.setValue(0), self.adv_ch_y.setValue(0), self.adv_ch_s.setValue(100), self.adv_ch_rot.setValue(0)])
+        form_ch.addRow(btn_reset_ch); v_adv.addWidget(grp_ch)
+
+        grp_bg = QGroupBox(_("背景圖層設定 (-bg)")); form_bg = QFormLayout(grp_bg)
+        self.adv_bg_x = add_dual(_("X 軸平移:"), "t8_adv_bg_x", -2000, 2000, False, " px", form_bg)
+        self.adv_bg_y = add_dual(_("Y 軸平移:"), "t8_adv_bg_y", -2000, 2000, False, " px", form_bg)
+        self.adv_bg_s = add_dual(_("縮放比例:"), "t8_adv_bg_s", 1, 500, False, " %", form_bg)
+        self.adv_bg_rot = add_dual(_("旋轉角度:"), "t8_adv_bg_rot", -360, 360, False, " °", form_bg)
+        
+        self.btn_adv_bg_color = QPushButton(_("🎨 選擇無背景純色板顏色"))
+        self.btn_adv_bg_color.setStyleSheet(f"background-color: {self.config.get('t8_adv_bg_color', '#FF000000')}; color: white;")
+        def pick_adv_bg_color():
+            from PySide6.QtGui import QColor
+            from PySide6.QtWidgets import QColorDialog
+            c = QColorDialog.getColor(QColor(self.config.get("t8_adv_bg_color", "#FF000000")), self, _("選擇純色板顏色"), QColorDialog.ShowAlphaChannel)
+            if c.isValid():
+                self.config.set("t8_adv_bg_color", c.name(QColor.HexArgb))
+                self.btn_adv_bg_color.setStyleSheet(f"background-color: {c.name(QColor.HexArgb)}; color: white;")
+                if hasattr(self, 'preview_timer'): self.preview_timer.start()
+        self.btn_adv_bg_color.clicked.connect(pick_adv_bg_color)
+        form_bg.addRow(self.btn_adv_bg_color)
+        
+        btn_reset_bg = QPushButton(_("🔄 重設參數"))
+        btn_reset_bg.clicked.connect(lambda dummy_val=False: [self.adv_bg_x.setValue(0), self.adv_bg_y.setValue(0), self.adv_bg_s.setValue(100), self.adv_bg_rot.setValue(0)])
+        form_bg.addRow(btn_reset_bg); v_adv.addWidget(grp_bg)
+
+        grp_z = QGroupBox(_("圖層自由排序面板 (由頂至底)")); v_z = QVBoxLayout(grp_z)
+        self.list_z_order = QListWidget(); self.list_z_order.setDragDropMode(QAbstractItemView.InternalMove)
+        self.list_z_order.setFixedHeight(180); self.prevent_scroll_propagation(self.list_z_order)
+        z_name_map = {
+            "CH_LAYER": _("角色圖層 (-ch)"), "PeriFrame": _("外框 (PeriFrame)"),
+            "NameBox": _("卡名欄 (NameBox)"), "EffFrame": _("效果框 (EffFrame)"),
+            "ArtFrame": _("卡圖框 (ArtFrame)"), "EffBox": _("效果文字欄 (EffBox)"),
+            "BackGround": _("卡底背景 (BackGround)"), "BG_LAYER": _("自訂背景/純色底板 (-bg)")
+        }
+        def refresh_z_order_list():
+            self.list_z_order.clear()
+            for logic_id in self.config.get("t8_adv_z_order", ["CH_LAYER", "PeriFrame", "NameBox", "EffFrame", "ArtFrame", "EffBox", "BackGround", "BG_LAYER"]):
+                item = QListWidgetItem(z_name_map.get(logic_id, logic_id)); item.setData(Qt.UserRole, logic_id)
+                self.list_z_order.addItem(item)
+        refresh_z_order_list()
+        
+        def save_z_order():
+            self.config.set("t8_adv_z_order", [self.list_z_order.item(i).data(Qt.UserRole) for i in range(self.list_z_order.count())])
+            if hasattr(self, 'preview_timer'): self.preview_timer.start()
+        self.list_z_order.model().rowsMoved.connect(save_z_order)
+        
+        h_z_btn = QHBoxLayout()
+        btn_z_up = QPushButton(_("▲ 上移")); btn_z_up.clicked.connect(lambda dummy_val=False: [UIHelper.move_list_items(self.list_z_order, -1), save_z_order()])
+        btn_z_dn = QPushButton(_("▼ 下移")); btn_z_dn.clicked.connect(lambda dummy_val=False: [UIHelper.move_list_items(self.list_z_order, 1), save_z_order()])
+        btn_z_rst = QPushButton(_("🔄 恢復預設圖層順序"))
+        btn_z_rst.clicked.connect(lambda dummy_val=False: [self.config.set("t8_adv_z_order", ["CH_LAYER", "PeriFrame", "NameBox", "EffFrame", "ArtFrame", "EffBox", "BackGround", "BG_LAYER"]), refresh_z_order_list(), save_z_order()])
+        h_z_btn.addWidget(btn_z_up); h_z_btn.addWidget(btn_z_dn); h_z_btn.addWidget(btn_z_rst)
+        v_z.addWidget(self.list_z_order); v_z.addLayout(h_z_btn); v_adv.addWidget(grp_z)
+
+        self.grp_adv_studio.hide()
+        self.layout.addWidget(self.grp_adv_studio)
+
+        # ─── 3. 素材與畫布設定區 (僅動畫) ───
+        self.grp_c_canvas = QGroupBox(_("素材與畫布設定區"))
+        form_c_canvas = QFormLayout(self.grp_c_canvas)
+        self.c_hd_size = QComboBox(); self.c_hd_size.addItems(["FHD 1920x1080", "HD 1280x720"])
+        self.c_hd_size.setCurrentText(self.config.get("c_hd_res", "HD 1280x720"))
+        self.c_hd_size.currentTextChanged.connect(lambda t: [self.config.set("c_hd_res", t), self.preview_timer.start()])
+        cb_disk_cache = self.bind_check("use_disk_cache", _("啟用硬碟暫存 (防記憶體溢出)"))
+        cb_disk_cache.setToolTip(_("批次生成圖集時將影格寫入硬碟，適合處理長影片或記憶體小於 8GB 之用戶。"))
+        form_c_canvas.addRow(cb_disk_cache)
+        
+        self.c_fill_mode = QComboBox()
+        fill_modes = [
+            (_("裁切滿版 (Crop Fill)"), "Crop"),
+            (_("等比留邊 (Contain)"), "Contain"),
+            (_("拉伸 (Stretch)"), "Stretch")
+        ]
+        for display_name, logic_id in fill_modes:
+            self.c_fill_mode.addItem(display_name, logic_id)
+            
+        # 🛡️ 讀取設定與向下相容防呆 (將舊設定檔儲存的中文轉為新的邏輯代號)
+        saved_fill_mode = self.config.get("c_fill_mode", "Crop")
+        legacy_map = {"裁切滿版 (Crop Fill)": "Crop", "等比留邊 (Contain)": "Contain", "拉伸 (Stretch)": "Stretch"}
+        if saved_fill_mode in legacy_map: saved_fill_mode = legacy_map[saved_fill_mode]
+        
+        idx = self.c_fill_mode.findData(saved_fill_mode)
+        if idx >= 0: self.c_fill_mode.setCurrentIndex(idx)
+        
+        # 🛡️ 改用 currentIndexChanged 取代 currentTextChanged，綁定 .itemData(idx) 取出邏輯代號
+        self.c_fill_mode.currentIndexChanged.connect(lambda idx: [self.config.set("c_fill_mode", self.c_fill_mode.itemData(idx)), self.preview_timer.start()])
+        self.block_wheelEvent(self.c_hd_size); self.block_wheelEvent(self.c_fill_mode)
+        
+        form_c_canvas.addRow(_("HD 目標解析度:"), self.c_hd_size)
+        form_c_canvas.addRow(_("畫布填充模式:"), self.c_fill_mode)
+        self.c_rot = add_dual(_("旋轉角度校正:"), "c_rot", -360, 360, False, "°", form_c_canvas)
+        self.c_off_x = add_dual(_("X 軸平移:"), "c_offset_x", -2000, 2000, False, " px", form_c_canvas)
+        self.c_off_y = add_dual(_("Y 軸平移:"), "c_offset_y", -2000, 2000, False, " px", form_c_canvas)
+        
+        lbl_hint = QLabel(_("ℹ️ 提示：SD 規格會自動完美降轉為 854x480 的 16:9 比例，避免變形。"))
+        lbl_hint.setStyleSheet("color: #2CC985;")
+        form_c_canvas.addRow(lbl_hint)
+        self.layout.addWidget(self.grp_c_canvas)
 
         # ─── 5. 關鍵幀預覽時間控制區 (僅動畫 & 預覽展開時) ───
         self.grp_c_prev = QGroupBox(_("關鍵幀預覽時間控制區"))
@@ -5556,6 +6699,13 @@ class TabPendulum(BaseTab):
 
         # 以容器為單位的顯隱調度
         self.grp_op.setVisible(is_overframe)
+        self.btn_toggle_adv.setVisible(is_overframe)
+        self.grp_adv_studio.setVisible(is_overframe and self.btn_toggle_adv.isChecked())
+        
+        # 🛡️ 閃卡工坊的獨立生命週期接管
+        self.btn_toggle_foil_studio.setVisible(is_overframe)
+        self.grp_foil_studio.setVisible(is_overframe and self.btn_toggle_foil_studio.isChecked())
+        
         self.grp_c_canvas.setVisible(is_cutin)
         self.grp_c_prev.setVisible(is_cutin) # ✅ 修復：關鍵幀控制區改為動畫模式下常駐顯示
         self.grp_c_color.setVisible(is_cutin)
@@ -5593,7 +6743,9 @@ class TabPendulum(BaseTab):
 
     def _auto_fill_preview_path(self):
         """✨ 智慧連動：點擊批次清單時，自動補全模糊路徑並觸發預覽"""
-        if self.cb_mode.currentData() != "MODE_CUTIN": return
+        mode = self.cb_mode.currentData()
+        if mode not in ("MODE_CUTIN", "MODE_OVERFRAME"): return
+        
         cursor = self.t8_text.textCursor()
         cursor.select(cursor.SelectionType.LineUnderCursor)
         raw_line = cursor.selectedText().strip()
@@ -5604,13 +6756,53 @@ class TabPendulum(BaseTab):
         
         line_text = line_parts[0]
         if line_text:
-            full_path = self._resolve_cutin_preview_path(line_text)
+            full_path = ""
+            if mode == "MODE_OVERFRAME":
+                c = self.config
+                mod_dir = c.get("t8_mod_dir", "").strip() or c.get("s_folder_mod", "").strip() or "卡圖改"
+                root_dir = clean_path(c.get("t8_root_dir"))
+                mod_dir = MDEngine.resolve_path(root_dir, mod_dir)
+                bk_dir = MDEngine.resolve_path(mod_dir, c.get("t8_backup_folder", "").strip() or "修改前原檔")
+                full_path, dummy_bg, dummy_adv = MDEngine.resolve_overframe_material_path(mod_dir, bk_dir, line_text)
+            else:
+                full_path = self._resolve_cutin_preview_path(line_text)
             
-            if self.edit_prev_path.text() != full_path:
+            if full_path and self.edit_prev_path.text() != full_path:
                 self.edit_prev_path.setText(full_path)
                 
             if self.preview_widget.isVisible():
                 self.preview_timer.start()
+
+    def _get_adv_options(self):
+        c = self.config
+        return {
+            "ch_x": self.adv_ch_x.value(), "ch_y": self.adv_ch_y.value(), "ch_s": self.adv_ch_s.value(), "ch_rot": self.adv_ch_rot.value(),
+            "bg_x": self.adv_bg_x.value(), "bg_y": self.adv_bg_y.value(), "bg_s": self.adv_bg_s.value(), "bg_rot": self.adv_bg_rot.value(),
+            "bg_color": c.get("t8_adv_bg_color", "#FF000000"),
+            "z_order": c.get("t8_adv_z_order", ["CH_LAYER", "PeriFrame", "NameBox", "EffFrame", "ArtFrame", "EffBox", "BackGround", "BG_LAYER"]),
+            "masks": {
+                # 🛡️ 使用推導式大幅簡化 3x6 矩陣打包，遵循 DRY 原則
+                cat: {
+                    p: c.get(f"t8_{prefix}_{p}", d)
+                    for p, d in zip(
+                        ["PeriFrame", "NameBox", "ArtFrame", "EffFrame", "EffBox", "BackGround"],
+                        [True, False, True, True, False, False]
+                    )
+                }
+                for cat, prefix in [("prev", "foil_prev"), ("bake", "foil_bake"), ("dirty", "adv_mask")]
+            },
+            "foil_params": {
+                "sim_enable": c.get("t8_adv_foil_sim", False),
+                "palette": self.cb_foil_palette.currentData(),
+                "base_light": self.foil_base_light.value(),
+                "sharpness": self.foil_sharpness.value(),
+                "blend_mode": self.cb_foil_blend.currentData(),
+                "intensity": self.foil_intensity.value(),
+                "saturation": self.foil_saturation.value(),
+                "frequency": self.foil_frequency.value(),
+                "angle": self.foil_angle.value()
+            }
+        }
 
     def auto_load(self):
         c = self.config
@@ -5619,7 +6811,6 @@ class TabPendulum(BaseTab):
         if logic_id == "MODE_PENDULUM_ORIGINAL_CROP":
             folder_name = c.get("s_folder_img", "").strip() or "原卡圖"
         else:
-            # 納西妲修正：動畫後處理 (MODE_CUTIN) 與超框後處理 (MODE_OVERFRAME) 一律鎖定「卡圖改」
             folder_name = c.get("t8_mod_dir", "").strip() or c.get("s_folder_mod", "").strip() or "卡圖改"
             
         target_dir = MDEngine.resolve_path(clean_path(c.get("t8_root_dir")), folder_name)
@@ -5630,13 +6821,10 @@ class TabPendulum(BaseTab):
             lines = []
             if os.path.exists(target_dir):
                 if logic_id == "MODE_CUTIN":
-                    import re
-                    # 🛡️ 修正：智慧雙軌掃描。先尋找「卡圖改/修改前原檔」，再尋找「卡圖改」
                     bk_folder = c.get("t8_backup_folder", "").strip() or "修改前原檔"
                     bk_dir = MDEngine.resolve_path(target_dir, bk_folder)
                     found_ids = set()
                     
-                    # 1. 優先掃描備份區 (已被處理並移動的原始素材)
                     if os.path.exists(bk_dir):
                         for f in os.listdir(bk_dir):
                             f_lower = f.lower()
@@ -5646,12 +6834,10 @@ class TabPendulum(BaseTab):
                                 lines.append(f)
                                 found_ids.add(os.path.splitext(f)[0].lower())
                                 
-                    # 2. 掃描卡圖改根目錄 (尚未被處理的新素材)
                     for f in os.listdir(target_dir):
                         f_path = os.path.join(target_dir, f)
                         f_lower = f.lower()
                         
-                        # 🛡️ 智慧防線：若是資料夾，需排除備份區（如「修改前原檔」）及非動畫命名規範的目錄
                         if os.path.isdir(f_path):
                             if f_lower == bk_folder.lower() or not re.match(r'^p\d+', f, re.IGNORECASE):
                                 continue 
@@ -5661,14 +6847,36 @@ class TabPendulum(BaseTab):
                                 continue
                             
                             stem = os.path.splitext(f)[0].lower()
-                            # 🛡️ 去重防護：如果備份區已經有該 ID，則不重複加入
                             if not any(stem.startswith(fid) or fid.startswith(stem) for fid in found_ids):
                                 lines.append(f)
                                 found_ids.add(stem)
                 else:
-                    for f in os.listdir(target_dir):
-                        if f.lower().endswith(('.png', '.jpg')):
-                            lines.append(f)
+                    found_ch, found_bg, found_norm = set(), set(), set()
+                    bk_folder = c.get("t8_backup_folder", "").strip() or "修改前原檔"
+                    bk_dir = MDEngine.resolve_path(target_dir, bk_folder)
+                    search_dirs = [target_dir]
+                    if os.path.exists(bk_dir): search_dirs.insert(0, bk_dir)
+                    
+                    for d in search_dirs:
+                        if not os.path.exists(d): continue
+                        for f in os.listdir(d):
+                            if f.lower().endswith(('.png', '.jpg', '.jpeg', '.webp', '.bmp')):
+                                f_lower = f.lower()
+                                if '-bg.' in f_lower: found_bg.add(f)
+                                elif '-ch.' in f_lower: found_ch.add(f)
+                                else: found_norm.add(f)
+                            
+                    for f in sorted(found_ch):
+                        base = re.sub(r'-ch\..+$', '', f, flags=re.IGNORECASE)
+                        has_bg = any(bg.lower().startswith(base.lower() + '-bg.') for bg in found_bg)
+                        if has_bg: lines.append(f"{f}  # [{_('雙層合成: 角色 + 背景')}]")
+                        else: lines.append(f"{f}  # [{_('單層精修: 僅角色 (套用純色板)')}]")
+                        
+                    ch_bases = {re.sub(r'-ch\..+$', '', f, flags=re.IGNORECASE) for f in found_ch}
+                    for f in sorted(found_norm):
+                        base = os.path.splitext(f)[0]
+                        if base not in ch_bases:
+                            lines.append(f"{f}  # [{_('傳統單圖')}]")
                         
         self.t8_text.setPlainText("\n".join(lines) if lines else "")
         if lines: self.app.status_lbl.setText(_("狀態：自動掃描完成，找到 {count} 個符合條件的項目。").format(count=len(lines)))
@@ -5679,7 +6887,8 @@ class TabPendulum(BaseTab):
         hd_sz = (1920, 1080) if "1920" in sz_str else (1280, 720)
         options = {
             "use_disk_cache": c.get("use_disk_cache", False),
-            "s_folder_mod": c.get("s_folder_mod", "卡圖改"), "fill_mode": self.c_fill_mode.currentText(),
+            "max_threads": c.get("max_threads", "Auto"),
+            "s_folder_mod": c.get("s_folder_mod", "卡圖改"), "fill_mode": self.c_fill_mode.currentData(),
             "start_time": self.c_st_time.value(), "duration": self.c_dur.value(),
             "fps": self.c_fps.value(), "speed": self.c_speed.value(),
             "rot": self.c_rot.value(), "offset_x": self.c_off_x.value(), "offset_y": self.c_off_y.value(),
@@ -5785,6 +6994,11 @@ class TabPendulum(BaseTab):
             "artframe": float(c.get("t8_op_artframe", 1.0)), "effframe": float(c.get("t8_op_effframe", 1.0)),
             "effbox": float(c.get("t8_op_effbox", 1.0)), "background": float(c.get("t8_op_background", 1.0))
         }
+
+        options = {"pad_pct": self.get_safe_int("t8_padding_pct", 25), "opacities": opacities}
+        if mode_val == "overframe":
+            options.update(self._get_adv_options())
+            options["is_preview"] = False
         
         def on_finish(ct, e):
             if getattr(self, '_is_shortcut_flow', False):
@@ -5795,7 +7009,9 @@ class TabPendulum(BaseTab):
                 return
 
             if mode_val == "overframe":
-                ids = [os.path.splitext(t)[0].split('_')[0] for t in targets if os.path.splitext(t)[0].split('_')[0].isdigit()]
+                raw_ids = [os.path.splitext(t)[0].split('_')[0] for t in targets]
+                ids = [re.sub(r'-ch$', '', i, flags=re.IGNORECASE) for i in raw_ids]
+                ids = [i for i in ids if i.isdigit()]
                 self.config.signals.request_overframe_register.emit("\n".join(ids))
                 self.config.signals.set_return_to_tab4.emit(True)
                 QMessageBox.information(self, _("完成"), _("超框後處理完成！已為您準備好資料並自動跳轉至「超框註冊器」進行白名單註冊。"))
@@ -5803,12 +7019,15 @@ class TabPendulum(BaseTab):
             elif mode_val == "pendulum_orig":
                 QMessageBox.information(self, _("完成"), _("原卡圖靈擺裁切處理完成！\n成功將 {count} 張圖片拉伸裁切，並已覆寫回原卡圖目錄。").format(count=ct))
             else:
-                QMessageBox.information(self, _("完成"), _("處理完成！成功填充 {count} 張").format(count=ct))
-                if self.config.get("auto_switch_tab"):
+                msg = _("處理完成！成功填充 {count} 張").format(count=ct)
+                if e: msg += "\n\n" + _("⚠️ 以下項目處理發生錯誤：\n") + str(e)
+                QMessageBox.information(self, _("完成"), msg)
+                
+                if self.config.get("auto_switch_tab") and not e:
                     self.app.select_tab("t4_replace")
 
         self.app.execute_task(self.btn_run, _("進行圖像處理中"), MDEngine.task_post_process, 
-            (target_dir, bk_dir, c.get("t8_enable_backup"), self.get_safe_int("t8_padding_pct", 25), targets, mode_val, clean_path(c.get("t8_csv_dir")), opacities), 
+            (target_dir, bk_dir, c.get("t8_enable_backup"), self.get_safe_int("t8_padding_pct", 25), targets, mode_val, clean_path(c.get("t8_csv_dir")), options), 
             on_finish)
         
     def browse_preview(self):
@@ -5851,7 +7070,12 @@ class TabPendulum(BaseTab):
                 "artframe": float(c.get("t8_op_artframe", 1.0)), "effframe": float(c.get("t8_op_effframe", 1.0)),
                 "effbox": float(c.get("t8_op_effbox", 1.0)), "background": float(c.get("t8_op_background", 1.0))
             }
-            worker = TaskWorker(MDEngine.task_generate_preview, (img_path, clean_path(c.get("t8_csv_dir")), s_mode, self.get_safe_int("t8_padding_pct", 25), opacities))
+            options = {"pad_pct": self.get_safe_int("t8_padding_pct", 25), "opacities": opacities}
+            if mode_val == "MODE_OVERFRAME":
+                options.update(self._get_adv_options())
+                options["is_preview"] = True
+                
+            worker = TaskWorker(MDEngine.task_generate_preview, (img_path, clean_path(c.get("t8_csv_dir")), s_mode, self.get_safe_int("t8_padding_pct", 25), options))
 
         if not hasattr(self.app, '_active_workers'): self.app._active_workers = set()
         self.app._active_workers.add(worker)
@@ -5894,27 +7118,10 @@ class TabQuickMod(BaseTab):
         self.grp_search = QGroupBox(_("搜尋與選取"))
         v1 = QVBoxLayout(self.grp_search)
         
-        box_search = QHBoxLayout()
-        self.cb_lang = QComboBox()
-        self.cb_lang.addItems(["zh-tw", "zh-cn", "en-us", "ja-jp"])
-        self.cb_lang.setEditable(True)
-        self.cb_lang.setMinimumWidth(100) # 🛡️ 設定選單最小寬度 100px，徹底杜絕擠壓
-        self.cb_lang.setCurrentText(self.config.get("search_lang", "zh-tw"))
-        self.cb_lang.currentTextChanged.connect(lambda t: [self.config.set("search_lang", t), self.update_list()])
-        self.block_wheelEvent(self.cb_lang)
-        
-        self.t9_search = QLineEdit(); self.t9_search.setPlaceholderText(_("搜尋 Hash/ID/名稱/效果..."))
-        self.t9_search.setMinimumWidth(180) # 🛡️ 設定搜尋列最小寬度
-        self.timer = QTimer(); self.timer.setSingleShot(True); self.timer.timeout.connect(self.update_list)
-        self.t9_search.textChanged.connect(lambda t: self.timer.start(300))
-        
-        lbl_lang_t9 = QLabel(_("對照語系:"))
-        lbl_lang_t9.setMinimumWidth(70) # 🛡️ 設定標籤最小寬度
-        box_search.addWidget(lbl_lang_t9, 0)
-        box_search.addWidget(self.cb_lang, 0)
-        box_search.addWidget(self.t9_search, 1) # 🛡️ 設定伸縮權重為 1，讓搜尋框自動吸收剩餘空間
-        box_search.addWidget(self.bind_visual_filter(), 0)
-        v1.addLayout(box_search)
+        self.search_widget = GoogleSearchFilterWidget(self.config, enable_batch_add=False)
+        self.search_widget.signals.search_requested.connect(self.execute_advanced_search)
+        self.search_widget.signals.page_display_updated.connect(self.update_list_display)
+        v1.addWidget(self.search_widget)
         
         self.t9_list = QListWidget()
         self.t9_list.setMinimumHeight(250) 
@@ -5995,23 +7202,18 @@ class TabQuickMod(BaseTab):
         self._set_row_visible(self.form2, self.t9_csv_edit, not is_lobby)
         self._set_row_visible(self.form2, self.t9_id, not is_lobby)
 
-    def update_list(self):
-        self.t9_list.clear()
+    def execute_advanced_search(self, params):
         dummy_map, db = MDEngine.get_csv_data(clean_path(self.config.get("t9_csv_dir")))
-        for item in MDEngine.search_cards(self.t9_search.text().strip().lower(), db, self.config.get("search_lang", "zh-tw"), visual_only=self.config.get("enable_visual_only_filter", True)): 
-            self.t9_list.addItem(item)
+        # ✨ 接收全量清單
+        all_matches = MDEngine.search_cards_advanced(params, db, search_lang=self.config.get("search_lang", "zh-tw"))
+        # 交付給 Widget 處理切片與分頁
+        self.search_widget.update_pagination_ui(all_matches, params.get("limit_per_page", 200))
 
-    def send_to_post_process(self):
-        tid = self.t9_id.text().strip()
-        img_path = clean_path(self.config.get("t9_img_path", ""))
-        out_root = clean_path(self.config.get("t9_out_dir", ""))
-        
-        if not tid or not os.path.isfile(img_path) or not os.path.isdir(out_root):
-            return QMessageBox.warning(self, _("警告"), _("請確認已選擇目標卡片 ID、新圖片路徑，且儲存根目錄確實存在！"))
-        
-        # 發送跳轉廣播
-        self.config.signals.request_overframe_shortcut.emit(tid, img_path, out_root)
-        self.app.select_tab("t8_pendulum")
+    def update_list_display(self, page_slice):
+        # ✨ 0ms 瞬間更新 UI
+        self.t9_list.clear()
+        for item in page_slice:
+            self.t9_list.addItem(item)
 
     def on_return_from_post(self, new_img_path):
         self.t9_img_edit.setText(new_img_path)
@@ -6054,6 +7256,19 @@ class TabQuickMod(BaseTab):
             (tid, c.get("t9_csv_dir"), c.get("t9_src_dir"), c.get("t9_out_dir"), c.get("t9_img_path"), 
              c.get("t9_overwrite_game"), c.get("s_folder_backup"), c.get("s_folder_out")), 
             on_finish)
+
+    def send_to_post_process(self):
+        c = self.config
+        card_id = self.t9_id.text().strip()
+        img_path = clean_path(c.get("t9_img_path"))
+        root_dir = clean_path(c.get("t9_out_dir"))
+        
+        if not card_id or not os.path.isfile(img_path) or not os.path.isdir(root_dir):
+            return QMessageBox.critical(self, _("錯誤"), _("請確認「目標卡片 ID」、「新圖片路徑」與「儲存根目錄」皆已填寫且有效！"))
+        
+        # 發射訊號傳遞給 Tab 8 進行超框處理，並自動跳轉至 Tab 8
+        self.config.signals.request_overframe_shortcut.emit(card_id, img_path, root_dir)
+        self.app.select_tab("t8_pendulum")
         
 # ==================== 分頁 9: 圖形化瀏覽器 (Gallery) ====================
 class TabGallery(BaseTab):
@@ -6161,19 +7376,6 @@ class TabGallery(BaseTab):
         self.btn_send_back.setVisible(is_filter)
         self.btn_t2.setVisible(not is_filter)
         self.btn_t9.setVisible(not is_filter)
-
-    def send_back_to_extract(self):
-        ids = []
-        for i in range(self.list_widget.count()):
-            ids.append(self.list_widget.item(i).data(Qt.UserRole))
-        # 廣播更新，並清除專屬沙盒 (主視窗接收到訊號會自動跳轉，無需任何彈窗干擾)
-        self.config.signals.sync_filter_result.emit(ids)
-        self.undo_stack.clear()
-        self.list_widget.clear()
-        cache_dir = os.path.join(MDEngine.TEMP_DIR, "filter_sandbox")
-        if os.path.exists(cache_dir):
-            import shutil
-            shutil.rmtree(cache_dir, ignore_errors=True)
 
     def set_filter_mode(self, id_list):
         self._filter_target_ids = id_list
