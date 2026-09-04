@@ -881,7 +881,7 @@ class MDEngine:
         if not name: return False
         n = str(name).lower()
         if 'basecolor' in n and 'mat_' in n: return True
-        if 'coin01tex' in n or 'cointossicon' in n: return True
+        if 'coin01tex' in n or 'cointex' in n or 'cointossicon' in n: return True
         if 'deckcase' in n: return True
         if 'profileframe' in n: return True
         if 'profileicon' in n: return True
@@ -7483,7 +7483,7 @@ class TabGallery(BaseTab):
         
         cat_map = {
             "CAT_MAT": lambda n: 'basecolor' in n.lower() and 'mat_' in n.lower(),
-            "CAT_COIN": lambda n: 'coin01tex' in n.lower() or 'cointossicon' in n.lower(),
+            "CAT_COIN": lambda n: 'coin01tex' in n.lower() or 'cointex' in n.lower() or 'cointossicon' in n.lower(),
             "CAT_DECKCASE": lambda n: 'deckcase' in n.lower(),
             "CAT_FRAME": lambda n: 'profileframe' in n.lower(),
             "CAT_ICON": lambda n: 'profileicon' in n.lower(),
@@ -7567,7 +7567,7 @@ class TabGallery(BaseTab):
                     
             # 🛡️ 硬幣特別追加：自動加入反面
             if "cointossicon" in item_id.lower() or "coin01tex" in item_id.lower():
-                if "CoinTossIcon_Tails" in all_ids: to_extract.add("CoinTossIcon_Tails")
+                if "CoinTex_Tails" in all_ids: to_extract.add("CoinTex_Tails")
                     
         self.config.signals.append_extraction_list.emit("\n".join(to_extract))
         
