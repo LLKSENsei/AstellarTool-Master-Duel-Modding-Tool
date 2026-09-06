@@ -3591,7 +3591,7 @@ class MDEngine:
         if mode == "MODE_PENDULUM_PAD":
             pad_pct = options.get("pad_pct", 25)
             pad_h = int(h * (pad_pct / 100.0))
-            new_img = Image.new("RGBA", (w, h + pad_h), (0, 0, 0, 0))
+            new_img = Image.new("RGBA", (w, h + pad_h), (255, 255, 255, 255))
             new_img.paste(img, (0, 0))
             return new_img
             
