@@ -5213,6 +5213,21 @@ class MDEngine:
         return records, conflicts
 
     @staticmethod
+    def check_has_core_assets(mod_dir, csv_path):
+        """🛡️ DRY 核心：集中判定給定目錄中是否包含需要寫入 data.unity3d 的核心資產"""
+        if not os.path.exists(mod_dir): return False
+        mapping_dict, dummy_db = MDEngine.get_csv_data(csv_path)
+        data_assets_mapping = {k: v for k, v in mapping_dict.items() if any(item['folder'] == "data.unity3d" for item in v)}
+        if not data_assets_mapping: return False
+        
+        for img_name in os.listdir(mod_dir):
+            if not img_name.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp')): continue
+            base_id = MDEngine.find_longest_prefix(img_name, list(data_assets_mapping.keys()))
+            if base_id in data_assets_mapping:
+                return True
+        return False
+
+    @staticmethod
     def task_batch_replace_data_unity3d(target_dir, mod_dir, csv_path, out_root, out_folder, progress_cb, finish_cb):
         """核心資產記憶體單次批次注入引擎與三態防護機制 (修復版)"""
         env = None
@@ -5993,128 +6008,129 @@ class TabGuide(BaseTab):
         # 徹底解放背景，讓底層動態 RGBA 與桌布透出
         text_guide.setStyleSheet("background: transparent; border: none;")
         
-        # 遵循 DRY 原則，將所有教學文本以單一翻譯字串包裹，確保多語系系統正常擷取
-        html_content = _("""
-        <div style="font-family: 'Consolas', 'Microsoft JhengHei', sans-serif; line-height: 1.6; font-size: 14px; color: #EBEBEC;">
-            <p>這座工坊專為替換遊戲內 2D 資源（Texture2D）設計，涵蓋卡圖、卡套、場地、頭像、背景與召喚動畫。<br>
-            如需查閱最新版本的圖文教學或專案原始碼，請存取終端資料庫：<br>
-            <a href="https://github.com/LLKSENsei/AstellarTool-Master-Duel-Modding-Tool" style="color: #4AA4FF; font-weight: bold; text-decoration: none;">👉 [AstellarTool GitHub 官方專案倉庫]</a></p>
+        # 【巧思】使用 Python 隱式字串拼接（將字串拆行但不加逗號）
+        # 這樣字串內絕對不會有 \n 或 Python 縮排的空白，AI 翻譯與 JSON 比對 100% 準確！
+        part_intro = _(
+            "<p>這座工坊專為替換遊戲內 2D 資源（Texture2D）設計，涵蓋卡圖、卡套、場地、頭像、背景與召喚動畫。<br>"
+            "如需查閱最新版本的圖文教學或專案原始碼，請存取終端資料庫：<br>"
+            "<a href=\"https://github.com/LLKSENsei/AstellarTool-Master-Duel-Modding-Tool\" style=\"color: #4AA4FF; font-weight: bold; text-decoration: none;\">👉 [AstellarTool GitHub 官方專案倉庫]</a></p>"
+        )
 
-            <hr style="border: 1px solid rgba(255,255,255,0.15); margin: 15px 0;">
+        part_ch1 = _(
+            "<h3 style=\"color: #E0C030; margin-bottom: 5px;\">📦 第一章：前置準備與命名編譯規則</h3>"
+            "<p><b>1. 準備替換素材：</b><br>"
+            "靜態圖片支援 PNG（推薦，保留透明通道）、JPG、BMP 等；召喚動畫支援 MP4、AVI、MOV 影片、GIF 動圖或 PSD 圖層檔案。</p>"
+            "<p><b>2. 嚴格檔案命名法則（正規化匹配規則）：</b><br>"
+            "系統是由左至右讀取字串，提取出第一個分隔符號（如底線 <code>_</code>）前方的字元作為「物件 ID」。<br>"
+            "前綴 ID 錯誤會導致系統靜默忽略該檔案，請嚴格遵守以下範例：</p>"
+            "<ul style=\"list-style-type: square; padding-left: 20px;\">"
+            "<li>✅ <code>12345_任意備註文字.png</code> （標準推薦格式，系統精準抓出 12345）</li>"
+            "<li>✅ <code>12345.png</code> （純數字 ID）</li>"
+            "<li>✅ <code>12345-ch.png</code> / <code>12345-bg.png</code> （進階超框雙圖層專用：角色層與背景層）</li>"
+            "<li>✅ <code>p18532_動畫備註.mp4</code> （召喚動畫專用：必須是小寫 <code>p</code> 開頭接數字）</li>"
+            "<li>✅ <code>ShopBGBase02_大廳.png</code> （系統大檔資產：必須完整保留原廠代碼）</li>"
+            "</ul>"
+            "<p style=\"color: #D83C3C;\">❌ <b>錯誤示範（將導致匹配失敗）：</b><br>"
+            "<code>青眼白龍_12345.png</code>（ID 被放置於後方）、<code>12345卡圖.png</code>（缺乏分隔字元）。</p>"
+        )
 
-            <h3 style="color: #E0C030; margin-bottom: 5px;">📦 第一章：前置準備與命名編譯規則</h3>
-            <p><b>1. 準備替換素材：</b><br>
-            靜態圖片支援 PNG（推薦，保留透明通道）、JPG、BMP 等；召喚動畫支援 MP4、AVI、MOV 影片、GIF 動圖或 PSD 圖層檔案。</p>
-            
-            <p><b>2. 嚴格檔案命名法則（正規化匹配規則）：</b><br>
-            系統是由左至右讀取字串，提取出第一個分隔符號（如底線 <code>_</code>）前方的字元作為「物件 ID」。<br>
-            前綴 ID 錯誤會導致系統靜默忽略該檔案，請嚴格遵守以下範例：</p>
-            <ul style="list-style-type: square; padding-left: 20px;">
-                <li>✅ <code>12345_任意備註文字.png</code> （標準推薦格式，系統精準抓出 12345）</li>
-                <li>✅ <code>12345.png</code> （純數字 ID）</li>
-                <li>✅ <code>12345-ch.png</code> / <code>12345-bg.png</code> （進階超框雙圖層專用：角色層與背景層）</li>
-                <li>✅ <code>p18532_動畫備註.mp4</code> （召喚動畫專用：必須是小寫 <code>p</code> 開頭接數字）</li>
-                <li>✅ <code>ShopBGBase02_大廳.png</code> （系統大檔資產：必須完整保留原廠代碼）</li>
-            </ul>
-            <p style="color: #D83C3C;">❌ <b>錯誤示範（將導致匹配失敗）：</b><br>
-            <code>青眼白龍_12345.png</code>（ID 被放置於後方）、<code>12345卡圖.png</code>（缺乏分隔字元）。</p>
+        # 注意 <pre> 裡面的換行我們手動使用 \n 來維持排版
+        part_ch2 = _(
+            "<h3 style=\"color: #FF5A9B; margin-bottom: 5px;\">🗄️ 第二章：實體檔案拓撲與資料夾生命週期</h3>"
+            "<p>為了避免覆蓋錯誤，請清楚區分以下三大目錄結構。請特別注意 <b style=\"color:#2CC985;\">【★ 卡圖改】</b>，這是你唯一需要手動放入新素材的地方！</p>"
+            "<h4 style=\"color: #4AA4FF; margin-bottom: 2px;\">1. 你的「專案工作資料夾」(本工具設定中的\"儲存根目錄\")</h4>"
+            "<pre style=\"background-color: rgba(0,0,0,0.45); padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); color: #EBEBEC; font-family: 'Consolas', monospace;\">"
+            "D:\\MD_Mod_Work\\              ← 【專案根目錄】(強烈建議在你容量大的硬碟獨立建立)\n"
+            " │\n"
+            " ├── 原檔\\                    [分頁2 自動提取] 從遊戲抓出來的未修改原始 Bundle\n"
+            " ├── 原卡圖\\                  [分頁3 自動解包] 提取出來的原版純圖片 (PNG)，供你作畫參考\n"
+            " ├── 文件備份\\                [分頁3 自動備份] 原始 Bundle 的純淨副本 (日後還原/打包發布必備)\n"
+            " │\n"
+            " ├── <b style=\"color:#2CC985;\">★ 卡圖改\\               [⭐ 玩家放材料的核心所在地！]</b>\n"
+            " │    │                      (分頁3可自動建資料夾，但新圖片要由你親手放進來！)\n"
+            " │    ├── 12345_我的青眼.png  ← 放入你改好的新卡圖\n"
+            " │    ├── 12345-ch.png       ← [進階超框] 頂層角色層 (可選)\n"
+            " │    ├── 12345-bg.png       ← [進階超框] 底層背景層 (可選)\n"
+            " │    ├── p18532_召喚.mp4    ← [召喚動畫] 動畫影片或 PSD (可選)\n"
+            " │    └── 修改前原檔\\         [分頁7 自動備份] 執行超框或靈擺後，你放進去的原圖會備份於此\n"
+            " │\n"
+            " ├── 改完的文件\\              [分頁4 自動編譯] 將「卡圖改」的圖片注入後輸出的全新 Bundle\n"
+            " └── ModFolder\\               [分頁5 自動封裝] 最終發布包！目錄已經完全對齊官方遊戲結構，可直接分享"
+            "</pre>"
+            "<h4 style=\"color: #4AA4FF; margin-bottom: 2px; margin-top: 10px;\">2. 工具主程式目錄 (MD_AstellarTool 的家)</h4>"
+            "<pre style=\"background-color: rgba(0,0,0,0.45); padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); color: #EBEBEC; font-family: 'Consolas', monospace;\">"
+            "MD_AstellarTool\\               ← 【工具主程式目錄】\n"
+            " ├── MD_AstellarTool.exe (或 .py 原始碼)\n"
+            " ├── md_tool_config.json       ← [全域設定檔] 紀錄你的路徑、調色盤顏色、分頁排序\n"
+            " ├── symlink_state.json        ← [分頁12 虛擬掛載狀態檔] 紀錄目前的軟連結對應\n"
+            " │\n"
+            " ├── MD_Tool_Essential\\        ← [核心資源庫] ⚠️ 絕對不能刪除！\n"
+            " │    ├── CardFrame\\           ← 存放各卡種的超框 PSD 與 PNG 邊框模板 (分頁7/8依賴)\n"
+            " │    └── Languages\\           ← 多語系字典 (zh-tw.json、raw.json 等)\n"
+            " │\n"
+            " └── MD_Tool_Temp\\             ← [暫存快取庫] 工具運算時產生的緩衝區 (工具會自動維護)\n"
+            "      ├── gallery_cache\\       ← 分頁10 的圖庫縮圖快取 (可於介面一鍵清除)\n"
+            "      ├── of_card_asset_backups← 分頁9/13 超框註冊表的純淨基準檔 (.pristine) 與註冊歷史\n"
+            "      ├── data_unity3d_workspace← 分頁4 系統大檔的純淨備份與 Manifest 歷史\n"
+            "      └── frames_cache_...\\    ← 分頁7 生成動畫時的影格暫存區"
+            "</pre>"
+            "<h4 style=\"color: #4AA4FF; margin-bottom: 2px; margin-top: 10px;\">3. 官方遊戲目錄 (資料泉源)</h4>"
+            "<pre style=\"background-color: rgba(0,0,0,0.45); padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); color: #EBEBEC; font-family: 'Consolas', monospace;\">"
+            "SteamLibrary/.../Yu-Gi-Oh! Master Duel/\n"
+            " ├── masterduel_Data/\n"
+            " │    ├── data.unity3d        ← [系統核心檔] 大廳背景、戰鬥 UI\n"
+            " │    └── StreamingAssets/... ← [串流封裝] 怪獸登場動畫、戰鬥場地\n"
+            " └── LocalData/[8位數玩家ID]/\n"
+            "      └── 0000/               ← [卡圖總庫] 數萬個以 Hash 亂碼命名的加密資源"
+            "</pre>"
+        )
 
-            <hr style="border: 1px solid rgba(255,255,255,0.15); margin: 15px 0;">
+        part_ch3 = _(
+            "<h3 style=\"color: #2CC985; margin-bottom: 10px;\">⚙️ 第三章：全分頁功能深度剖析</h3>"
+            "<h4 style=\"color: #4AA4FF; margin-bottom: 2px;\">【標準管線】 (分頁 1~6)</h4>"
+            "<ul style=\"margin-top: 5px;\">"
+            "<li><b>1. 爆搜與補齊</b>：遍歷遊戲檔案，破解加密並生成「Hash 亂碼 ↔ 卡片 ID/名稱」的 CSV 字典檔。</li>"
+            "<li><b>2. 找出檔案</b>：讀取提取清單（支援視覺化篩選），將目標檔案從 0000 目錄複製到專案【原檔】區。</li>"
+            "<li><b>3. 提取資料</b>：解開 Bundle，匯出【原卡圖】，並保留原始【文件備份】。</li>"
+            "<li><b>4. 更改卡圖</b>：將【卡圖改】內的新圖注入至 Bundle，輸出至【改完的文件】。</li>"
+            "<li><b>5. 封裝模組</b>：自動依照官方路徑規範，建立子目錄結構並壓縮為 ZIP。</li>"
+            "<li><b>6. 智慧串連執行</b>：一鍵依序自動執行步驟 2 至 5。</li>"
+            "</ul>"
+            "<h4 style=\"color: #FF5A9B; margin-bottom: 2px;\">【核心靈魂引擎】進階卡面突破與極限特效 (分頁 7, 8, 9)</h4>"
+            "<ul style=\"margin-top: 5px;\">"
+            "<li><b style=\"color: #FF5A9B;\">7. 靈擺與超框卡圖後處理（數位影像處理中心）</b>：<br>"
+            "- <b>靈擺處理</b>：自動填充透明像素，防止遊戲拉伸變形。<br>"
+            "- <b>超框立體處理</b>：套用 11:16 模板，支援 <code>-ch</code> (角色) 與 <code>-bg</code> (背景) 雙層交集挖空，完美解決鑽卡特效穿透人物的問題。<br>"
+            "- <b>Spine 召喚動畫生成</b>：支援綠幕去背，將影片/PSD 打包為圖集（Atlas），並自動計算 POP UP 縮放轉譯為 Spine 骨骼。</li>"
+            "<li><b style=\"color: #FF5A9B;\">8. 快捷單卡改圖（免專案直達快線）</b>：<br>"
+            "跳過建檔流程，輸入 ID 與圖片即可原地注入。支援與分頁 7 及分頁 9 形成<b>黃金閉環</b>（處理超框 ➔ 注入 ➔ 白名單註冊）。</li>"
+            "<li><b style=\"color: #FF5A9B;\">9. 超框卡片註冊器（二進位白名單編輯器）</b>：<br>"
+            "<b>決定超框卡圖是否生效的絕對關鍵！</b>若未在此將卡片 ID 寫入 <code>of_card_asset</code> 白名單，11:16 卡圖將被嚴重擠壓變形。</li>"
+            "</ul>"
+            "<h4 style=\"color: #4AA4FF; margin-bottom: 2px;\">【探索、維護與管理】 (分頁 10~13)</h4>"
+            "<ul style=\"margin-top: 5px;\">"
+            "<li><b>10. 圖形化瀏覽器</b>：無視亂碼，以縮圖檢視場地、卡套、頭像等視覺資產。</li>"
+            "<li><b>11. 模組串流修復器</b>：官方大更新導致舊模組破圖時，強制將舊貼圖移植到新版原檔中。</li>"
+            "<li><b>12. 虛擬模組管理器</b>：基於系統軟連結（Symlink）技術。免搬移檔案，零延遲掛載與卸載（需管理員權限）。</li>"
+            "<li><b>13. 設定與外觀</b>：全域控制中心。自訂 UI 顏色、背景透明度與左側分頁排序。</li>"
+            "</ul>"
+        )
+        
+        part_footer = _(
+            "<p style=\"text-align: center; color: #EBEBEC; font-style: italic; margin-top: 20px;\">"
+            "納西妲世界第一可愛!!"
+            "</p>"
+        )
 
-            <h3 style="color: #FF5A9B; margin-bottom: 5px;">🗄️ 第二章：實體檔案拓撲與資料夾生命週期</h3>
-            <p>為了避免覆蓋錯誤，請清楚區分以下三大目錄結構。請特別注意 <b style="color:#2CC985;">【★ 卡圖改】</b>，這是你唯一需要手動放入新素材的地方！</p>
-            
-            <h4 style="color: #4AA4FF; margin-bottom: 2px;">1. 你的「專案工作資料夾」(本工具設定中的"儲存根目錄")</h4>
-            <pre style="background-color: rgba(0,0,0,0.45); padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); color: #EBEBEC; font-family: 'Consolas', monospace;">
-D:\\MD_Mod_Work\\              ← 【專案根目錄】(強烈建議在你容量大的硬碟獨立建立)
- │
- ├── 原檔\\                    [分頁2 自動提取] 從遊戲抓出來的未修改原始 Bundle
- ├── 原卡圖\\                  [分頁3 自動解包] 提取出來的原版純圖片 (PNG)，供你作畫參考
- ├── 文件備份\\                [分頁3 自動備份] 原始 Bundle 的純淨副本 (日後還原/打包發布必備)
- │
- ├── <b style="color:#2CC985;">★ 卡圖改\\               [⭐ 玩家放材料的核心所在地！]</b>
- │    │                      (分頁3可自動建資料夾，但新圖片要由你親手放進來！)
- │    ├── 12345_我的青眼.png  ← 放入你改好的新卡圖
- │    ├── 12345-ch.png       ← [進階超框] 頂層角色層 (可選)
- │    ├── 12345-bg.png       ← [進階超框] 底層背景層 (可選)
- │    ├── p18532_召喚.mp4    ← [召喚動畫] 動畫影片或 PSD (可選)
- │    └── 修改前原檔\\         [分頁7 自動備份] 執行超框或靈擺後，你放進去的原圖會備份於此
- │
- ├── 改完的文件\\              [分頁4 自動編譯] 將「卡圖改」的圖片注入後輸出的全新 Bundle
- └── ModFolder\\               [分頁5 自動封裝] 最終發布包！目錄已經完全對齊官方遊戲結構，可直接分享
-            </pre>
+        hr_tag = "<hr style=\"border: 1px solid rgba(255,255,255,0.15); margin: 15px 0;\">"
 
-            <h4 style="color: #4AA4FF; margin-bottom: 2px; margin-top: 10px;">2. 工具主程式目錄 (MD_AstellarTool 的家)</h4>
-            <pre style="background-color: rgba(0,0,0,0.45); padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); color: #EBEBEC; font-family: 'Consolas', monospace;">
-MD_AstellarTool\               ← 【工具主程式目錄】
- ├── MD_AstellarTool.exe (或 .py 原始碼)
- ├── md_tool_config.json       ← [全域設定檔] 紀錄你的路徑、調色盤顏色、分頁排序
- ├── symlink_state.json        ← [分頁12 虛擬掛載狀態檔] 紀錄目前的軟連結對應
- │
- ├── MD_Tool_Essential\        ← [核心資源庫] ⚠️ 絕對不能刪除！
- │    ├── CardFrame\           ← 存放各卡種的超框 PSD 與 PNG 邊框模板 (分頁7/8依賴)
- │    └── Languages\           ← 多語系字典 (zh-tw.json、raw.json 等)
- │
- └── MD_Tool_Temp\             ← [暫存快取庫] 工具運算時產生的緩衝區 (工具會自動維護)
-      ├── gallery_cache\       ← 分頁10 的圖庫縮圖快取 (可於介面一鍵清除)
-      ├── of_card_asset_backups← 分頁9/13 超框註冊表的純淨基準檔 (.pristine) 與註冊歷史
-      ├── data_unity3d_workspace← 分頁4 系統大檔的純淨備份與 Manifest 歷史
-      └── frames_cache_...\    ← 分頁7 生成動畫時的影格暫存區
-            </pre>
+        # 把以上元件組裝進容器 (Python f-string 自動合併)
+        html_content = (
+            "<div style=\"font-family: 'Consolas', 'Microsoft JhengHei', sans-serif; line-height: 1.6; font-size: 14px; color: #EBEBEC;\">"
+            f"{part_intro}{hr_tag}{part_ch1}{hr_tag}{part_ch2}{hr_tag}{part_ch3}{hr_tag}{part_footer}"
+            "</div>"
+        )
 
-            <h4 style="color: #4AA4FF; margin-bottom: 2px; margin-top: 10px;">3. 官方遊戲目錄 (資料泉源)</h4>
-            <pre style="background-color: rgba(0,0,0,0.45); padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); color: #EBEBEC; font-family: 'Consolas', monospace;">
-SteamLibrary/.../Yu-Gi-Oh! Master Duel/
- ├── masterduel_Data/
- │    ├── data.unity3d        ← [系統核心檔] 大廳背景、戰鬥 UI
- │    └── StreamingAssets/... ← [串流封裝] 怪獸登場動畫、戰鬥場地
- └── LocalData/[8位數玩家ID]/
-      └── 0000/               ← [卡圖總庫] 數萬個以 Hash 亂碼命名的加密資源
-            </pre>
-
-            <hr style="border: 1px solid rgba(255,255,255,0.15); margin: 15px 0;">
-
-            <h3 style="color: #2CC985; margin-bottom: 10px;">⚙️ 第三章：全分頁功能深度剖析</h3>
-            
-            <h4 style="color: #4AA4FF; margin-bottom: 2px;">【標準管線】 (分頁 1~6)</h4>
-            <ul style="margin-top: 5px;">
-                <li><b>1. 爆搜與補齊</b>：遍歷遊戲檔案，破解加密並生成「Hash 亂碼 ↔ 卡片 ID/名稱」的 CSV 字典檔。</li>
-                <li><b>2. 找出檔案</b>：讀取提取清單（支援視覺化篩選），將目標檔案從 0000 目錄複製到專案【原檔】區。</li>
-                <li><b>3. 提取資料</b>：解開 Bundle，匯出【原卡圖】，並保留原始【文件備份】。</li>
-                <li><b>4. 更改卡圖</b>：將【卡圖改】內的新圖注入至 Bundle，輸出至【改完的文件】。</li>
-                <li><b>5. 封裝模組</b>：自動依照官方路徑規範，建立子目錄結構並壓縮為 ZIP。</li>
-                <li><b>6. 智慧串連執行</b>：一鍵依序自動執行步驟 2 至 5。</li>
-            </ul>
-
-            <h4 style="color: #FF5A9B; margin-bottom: 2px;">【核心靈魂引擎】進階卡面突破與極限特效 (分頁 7, 8, 9)</h4>
-            <ul style="margin-top: 5px;">
-                <li><b style="color: #FF5A9B;">7. 靈擺與超框卡圖後處理（數位影像處理中心）</b>：
-                    <br>- <b>靈擺處理</b>：自動填充透明像素，防止遊戲拉伸變形。
-                    <br>- <b>超框立體處理</b>：套用 11:16 模板，支援 <code>-ch</code> (角色) 與 <code>-bg</code> (背景) 雙層交集挖空，完美解決鑽卡特效穿透人物的問題。
-                    <br>- <b>Spine 召喚動畫生成</b>：支援綠幕去背，將影片/PSD 打包為圖集（Atlas），並自動計算 POP UP 縮放轉譯為 Spine 骨骼。
-                </li>
-                <li><b style="color: #FF5A9B;">8. 快捷單卡改圖（免專案直達快線）</b>：
-                    <br>跳過建檔流程，輸入 ID 與圖片即可原地注入。支援與分頁 7 及分頁 9 形成<b>黃金閉環</b>（處理超框 ➔ 注入 ➔ 白名單註冊）。
-                </li>
-                <li><b style="color: #FF5A9B;">9. 超框卡片註冊器（二進位白名單編輯器）</b>：
-                    <br><b>決定超框卡圖是否生效的絕對關鍵！</b>若未在此將卡片 ID 寫入 <code>of_card_asset</code> 白名單，11:16 卡圖將被嚴重擠壓變形。
-                </li>
-            </ul>
-
-            <h4 style="color: #4AA4FF; margin-bottom: 2px;">【探索、維護與管理】 (分頁 10~13)</h4>
-            <ul style="margin-top: 5px;">
-                <li><b>10. 圖形化瀏覽器</b>：無視亂碼，以縮圖檢視場地、卡套、頭像等視覺資產。</li>
-                <li><b>11. 模組串流修復器</b>：官方大更新導致舊模組破圖時，強制將舊貼圖移植到新版原檔中。</li>
-                <li><b>12. 虛擬模組管理器</b>：基於系統軟連結（Symlink）技術。免搬移檔案，零延遲掛載與卸載（需管理員權限）。</li>
-                <li><b>13. 設定與外觀</b>：全域控制中心。自訂 UI 顏色、背景透明度與左側分頁排序。</li>
-            </ul>
-
-            <hr style="border: 1px solid rgba(255,255,255,0.15); margin: 15px 0;">
-            <p style="text-align: center; color: #EBEBEC; font-style: italic; margin-top: 20px;">
-                納西妲世界第一可愛!!
-            </p>
-        </div>
-        """)
         text_guide.setHtml(html_content)
         self.layout.addWidget(text_guide)
 
@@ -6911,19 +6927,9 @@ class TabReplace(BaseTab):
             if not s:
                 return QMessageBox.critical(self, _("錯誤"), _("常規檔案替換失敗：") + str(ct))
             
-            # 🛡️ 效能與防呆屏障：預先檢查「卡圖改」內是否有屬於核心資產的素材
-            mapping_dict, dummy_db = MDEngine.get_csv_data(c.get("t4_csv_dir"))
-            data_assets_mapping = {k: v for k, v in mapping_dict.items() if any(item['folder'] == "data.unity3d" for item in v)}
-            has_core_assets = False
+            # 🛡️ 效能與防呆屏障：呼叫 DRY 核心判定「卡圖改」內是否有屬於核心資產的素材
+            has_core_assets = MDEngine.check_has_core_assets(mod_dir, c.get("t4_csv_dir"))
             
-            if os.path.exists(mod_dir):
-                for img_name in os.listdir(mod_dir):
-                    if not img_name.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp')): continue
-                    base_id = MDEngine.find_longest_prefix(img_name, list(data_assets_mapping.keys()))
-                    if base_id in data_assets_mapping:
-                        has_core_assets = True
-                        break
-                        
             # 若無核心資產，直接結案，不浪費 I/O 讀取大檔，也不會因為未設定 0000 目錄而誤報錯誤
             if not has_core_assets:
                 QMessageBox.information(self, _("完成"), _("替換完成！常規檔案產出 {count} 個。").format(count=ct))
@@ -9162,6 +9168,12 @@ class TabChain(BaseTab):
             
             def on_replace_done(s, ct, e):
                 if not s: return self.run_next(queue, s, ct, e)
+                
+                # 🛡️ 引入 DRY 前置檢查：沒有核心資產就直接進入下一關，阻斷異常輸出大檔
+                has_core = MDEngine.check_has_core_assets(mod_dir, c.get("t4_csv_dir"))
+                if not has_core:
+                    return self.run_next(queue, True, ct, None)
+
                 target_dir = clean_path(c.get("t2_src_dir")) or clean_path(c.get("t1_target_dir"))
                 out_folder = c.get("s_folder_out", "").strip() or "改完的文件"
                 self.app.execute_task(None, _("[自動化] data.unity3d 同步檢測中"), MDEngine.task_batch_replace_data_unity3d,
