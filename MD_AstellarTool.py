@@ -19,7 +19,7 @@ License: MIT License
 
 __author__ = "LonelyMaJo"
 __license__ = "MIT"
-__version__ = "1.5.0"
+__version__ = "1.6.0"
 __url__ = "https://www.pixiv.net/users/126514098"
 
 import os
@@ -53,8 +53,8 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QFormLayout, QGroupBox, QPushButton, QLabel, QLineEdit, QCheckBox, QComboBox, 
     QFileDialog, QMessageBox, QScrollArea, QStackedWidget, QListWidget, QMenu,
-    QAbstractItemView, QPlainTextEdit, QProgressBar, QGraphicsOpacityEffect, QSlider, QSizePolicy,
-    QRadioButton, QButtonGroup, QListWidgetItem
+    QAbstractItemView, QPlainTextEdit, QTextBrowser, QProgressBar, QGraphicsOpacityEffect, QSlider, QSizePolicy,
+    QRadioButton, QButtonGroup, QListWidgetItem, QSpinBox, QDoubleSpinBox
 )
 from PySide6.QtCore import Qt, QObject, Signal, QRunnable, QThreadPool, QTimer, QRect, QPoint, QSize, QEvent
 from PySide6.QtGui import QFont, QPixmap, QImage, QPainter, QColor, QFontDatabase, QPolygon, QPen, QIcon, QKeySequence, QShortcut
@@ -144,7 +144,8 @@ class ConfigSignals(QObject):
     append_extraction_list = Signal(str)      # 廣播給「找出檔案」追加清單
     set_quick_mod_id = Signal(str)            # 廣播給「快捷單卡」填入ID
     request_pendulum_reload = Signal()
-    set_t8_mode = Signal(str)   
+    set_t8_mode = Signal(str)
+    sync_search_lang = Signal(str)
 
 class ConfigManager:
     """真・模組化核心：唯一真相來源。各分頁只負責更新與讀取這裡的資料。"""
@@ -162,7 +163,7 @@ class ConfigManager:
 
     def _get_default(self):
         return {
-            "max_threads":  "Auto", "enable_visual_only_filter": True, "search_lang": "zh-tw", # 獨立搜尋語系
+            "max_threads":  "Auto", "enable_visual_only_filter": False, "search_lang": "zh-tw", # 獨立搜尋語系
             "use_disk_cache": False,
             "ui_theme_color": "#2CC985", "ui_bg_color": "#1C1C1C", "ui_text_color": "#EBEBEC", "ui_widget_bg_color": "#2B2B2B", "ui_border_color": "#444444",
             "ui_language": "zh-tw", "sync_paths": True, "auto_switch_tab": False,
@@ -173,10 +174,10 @@ class ConfigManager:
             "t1_gen_txt": True, "t1_gen_csv": True, "t1_ext_name": True, "t1_ext_desc": True, "t1_parse_meta": True,
             "t1_lang": "zh-tw", "t1_use_cache": False, "t1_xor_key": "61", "t1_deep_scan": False,
             "t2_csv_dir": "", "t2_txt_dir": "", "t2_src_dir": "", "t2_out_dir": "", "t2_folder_name": "",
-            "t3_img_folder": "", "t3_exp_csv": False, "t3_exp_img": True, "t3_exp_txt": True, "t3_exp_backup": True,
+            "t3_img_folder": "", "t3_exp_csv": False, "t3_exp_img": True, "t3_exp_txt": True, "t3_exp_backup": True, "t3_auto_create_mod_dir": True,
             "t4_csv_dir": "", "t4_root_dir": "", "t4_backup_name": "", "t4_mod_name": "",
             "t5_csv_dir": "", "t5_root_dir": "", "t5_mod_folder_name": "ModFolder", "t5_pack_zip": False, "t5_readme_text": "",
-            "t5_include_mod_folder": True, "t5_include_readme": True,
+            "t5_include_card_art": True, "t5_include_readme": True,
             "t8_csv_dir": "", "t8_root_dir": "", "t8_mod_dir": "", "t8_padding_pct": "25", "t8_enable_backup": True, "t8_backup_folder": "修改前原檔",
             "t8_op_periframe": 1.0, "t8_op_namebox": 1.0, "t8_op_artframe": 1.0, "t8_op_effframe": 1.0, "t8_op_effbox": 1.0, "t8_op_background": 1.0,
             "t8_cutin_src": "", "t8_cutin_id": "",
@@ -188,7 +189,7 @@ class ConfigManager:
             "t8_foil_prev_PeriFrame": True, "t8_foil_prev_NameBox": False, "t8_foil_prev_ArtFrame": True, "t8_foil_prev_EffFrame": True, "t8_foil_prev_EffBox": False, "t8_foil_prev_BackGround": False,
             "t8_foil_bake_PeriFrame": False, "t8_foil_bake_NameBox": False, "t8_foil_bake_ArtFrame": False, "t8_foil_bake_EffFrame": False, "t8_foil_bake_EffBox": False, "t8_foil_bake_BackGround": False,
             "t8_adv_mask_PeriFrame": True, "t8_adv_mask_NameBox": False, "t8_adv_mask_ArtFrame": True, "t8_adv_mask_EffFrame": True, "t8_adv_mask_EffBox": False, "t8_adv_mask_BackGround": False,
-            "t8_adv_foil_sim": False,
+            "t8_adv_foil_sim": False, "t8_adv_punch_alpha": True,
             "c_hd_res": "HD 1280x720", "c_fill_mode": "Crop",
             "c_start_time": 0.0, "c_duration": 3.0, "c_fps": 30, "c_speed": 1.0,
             "c_rot": 0, "c_offset_x": 0, "c_offset_y": 0,
@@ -199,6 +200,7 @@ class ConfigManager:
             "t9_csv_dir": "", "t9_src_dir": "", "t9_out_dir": "", "t9_img_path": "", "t9_overwrite_game": False,
             "t10_old_mod_dir": "", "t10_clean_src_dir": "", "t10_out_dir": "", "t10_overwrite": False,
             "t11_mod_root_dir": "", "t11_game_0000_dir": "", "t11_scan_depth": "3", "t11_active_mods": [],
+            "t12_fetch_size": "128", "t12_icon_size": 128, "t12_view_expanded": False,
             "s_folder_raw": "原檔", "s_folder_img": "原卡圖", "s_folder_backup": "文件備份", "s_folder_mod": "卡圖改", "s_folder_out": "改完的文件", "s_csv_mapping": "2DTexture_Mapping.csv",
             "c_t2": True, "c_t3": True, "c_t8": False, "c_t4": True, "c_t5": True
         }
@@ -305,6 +307,10 @@ class ConfigManager:
     def set(self, key, value):
         if self.data.get(key) == value: return
         self.data[key] = value
+
+        # ✨ 新增：發射跨分頁語言同步訊號
+        if key == "search_lang":
+            self.signals.sync_search_lang.emit(value)
         
         # 智慧路徑與連動同步
         if self.data.get("sync_paths"):
@@ -412,7 +418,21 @@ class TaskWorker(QRunnable):
 # =========================================================================
 # ==================== 第三區：核心邏輯大腦 (純粹運算，無 UI 依賴) ==============
 # =========================================================================
-def clean_path(path_str): return str(path_str).strip(' "\'')
+def clean_path(path_str):
+    if not path_str: return ""
+    text = str(path_str).strip(' "\'\t\r\n')
+    if not text: return ""
+    
+    if text.lower().startswith("file:"):
+        import urllib.parse
+        text = urllib.parse.unquote(text[5:]).replace('\\', '/')
+        lstripped = text.lstrip('/')
+        if len(lstripped) >= 2 and lstripped[1] == ':' and lstripped[0].isalpha():
+            text = lstripped
+        elif text.lower().startswith("//localhost/"):
+            text = text[12:].lstrip('/')
+            
+    return os.path.normpath(text)
 
 class MDEngine:
     TEMP_DIR = os.path.join(os.getcwd(), "MD_Tool_Temp")
@@ -813,7 +833,7 @@ class MDEngine:
 
     @staticmethod
     def get_csv_data(csv_path):
-        if not os.path.exists(csv_path): return {}, []
+        if not csv_path or not os.path.isfile(csv_path): return {}, []
         mtime = os.path.getmtime(csv_path)
         if csv_path in MDEngine._csv_cache:
             cached_mtime, cached_map, cached_db = MDEngine._csv_cache[csv_path]
@@ -849,7 +869,8 @@ class MDEngine:
                                 'hash': h_name, 
                                 'header': header, 
                                 'full_row': row,
-                                'properties': {'Type': c_type, 'SubType': c_subtype} # 👈 補齊 properties！
+                                'properties': {'Type': c_type, 'SubType': c_subtype},
+                                'all_entries': mapping[c_id] # ✨ 掛載參照，後續新增的條目會自動同步
                             }
         db = list(db_dict.values())
         MDEngine._csv_cache[csv_path] = (mtime, mapping, db)
@@ -862,6 +883,8 @@ class MDEngine:
 
     @staticmethod
     def get_actual_source_path(base_src_dir, hash_name, folder="0000"):
+        if folder == "data.unity3d" or hash_name == "data.unity3d":
+            return MDEngine.get_data_unity3d_safe(base_src_dir)
         if folder == "StreamingAssets":
             try:
                 sa_dir = MDEngine.get_sa_dir_safe(base_src_dir)
@@ -880,6 +903,8 @@ class MDEngine:
         """智慧辨識：判定是否為指定的視覺資產"""
         if not name: return False
         n = str(name).lower()
+        if n.startswith('card_frame') or 'card_frame' in n: return True
+        if n == 'shopbgbase02': return True
         if 'basecolor' in n and 'mat_' in n: return True
         if 'coin01tex' in n or 'cointex' in n or 'cointossicon' in n: return True
         if 'deckcase' in n: return True
@@ -915,11 +940,9 @@ class MDEngine:
         return match.group(1) if match else None
 
     @staticmethod
-    def task_gallery_cache(items_to_fetch, src_dir, cache_dir, progress_cb, finish_cb):
-        """背景快取生成器：100% 對齊掃描端優先權，不卡頓、低記憶體消耗地提取縮圖"""
+    def task_gallery_cache(items_to_fetch, src_dir, cache_dir, target_res, progress_cb, finish_cb):
+        """背景快取生成器：加入動態畫質齊平縮放引擎"""
         os.makedirs(cache_dir, exist_ok=True)
-        
-        # 🛡️ O(N) 磁碟 I/O 轉換為 O(1) 記憶體查表，提升機械硬碟上的校驗速度
         try:
             existing_files = set(os.listdir(cache_dir))
         except Exception:
@@ -929,12 +952,12 @@ class MDEngine:
         for hash_name, item_ids in items_to_fetch.items():
             count += 1
             if progress_cb: progress_cb(count)
-            # 使用記憶體查表取代硬碟 I/O 查詢
             if all(f"{iid}.png" in existing_files for iid in item_ids):
                 success += len(item_ids); continue
             
             src_file = MDEngine.get_actual_source_path(src_dir, hash_name, "0000")
             if not os.path.exists(src_file): src_file = MDEngine.get_actual_source_path(src_dir, hash_name, "StreamingAssets")
+            if not os.path.exists(src_file): src_file = MDEngine.get_actual_source_path(src_dir, hash_name, "data.unity3d")
             if not os.path.exists(src_file): continue
 
             env = None            
@@ -942,8 +965,6 @@ class MDEngine:
                 env = UnityPy.load(src_file)
                 path_to_container = {obj.path_id: str(c_path) for c_path, obj in env.container.items()}
                 base_container_path = str(next(iter(env.container.keys()), ""))
-                
-                # ✨ DRY 優化：大小寫同化字典在迴圈外建構一次即可，大幅提升效能
                 item_ids_lower = {vid.lower(): vid for vid in item_ids}
 
                 for obj in env.objects:
@@ -964,55 +985,90 @@ class MDEngine:
                             c_path = str(path_to_container.get(obj.path_id, base_container_path))
 
                             if not clean_name:
-                                if c_path:
-                                    clean_name = c_path.split('/')[-1].replace('.prefab', '').replace('.mat', '').replace('.bmp', '').replace('.png', '')
-                                else:
-                                    clean_name = str(hash_name).replace('.bundle', '')
+                                if c_path: clean_name = c_path.split('/')[-1].replace('.prefab', '').replace('.mat', '').replace('.bmp', '').replace('.png', '')
+                                else: clean_name = str(hash_name).replace('.bundle', '')
 
                             clean_name = str(clean_name).strip()
-
                             clean_name_lower = clean_name.lower() if clean_name else ""
                             base_id_lower = re.sub(r'_(l|m|s|128|256|512)$', '', clean_name_lower, flags=re.IGNORECASE) if clean_name_lower else ""
                             
                             target_id = None
-                            if clean_name_lower in item_ids_lower: 
-                                target_id = item_ids_lower[clean_name_lower]
-                            elif base_id_lower in item_ids_lower: 
-                                target_id = item_ids_lower[base_id_lower]
+                            if clean_name_lower in item_ids_lower: target_id = item_ids_lower[clean_name_lower]
+                            elif base_id_lower in item_ids_lower: target_id = item_ids_lower[base_id_lower]
                             elif c_path:
-                                # 🛡️ 雙重降級保護：若內部物件名稱為通用名(如 "BaseColor")，自動嘗試從 Container 路徑 (c_path) 萃取 ID 進行匹配
                                 c_name = c_path.split('/')[-1].replace('.prefab', '').replace('.mat', '').replace('.bmp', '').replace('.png', '').strip().lower()
                                 c_base = re.sub(r'_(l|m|s|128|256|512)$', '', c_name, flags=re.IGNORECASE)
-                                if c_name in item_ids_lower:
-                                    target_id = item_ids_lower[c_name]
-                                elif c_base in item_ids_lower:
-                                    target_id = item_ids_lower[c_base]
+                                if c_name in item_ids_lower: target_id = item_ids_lower[c_name]
+                                elif c_base in item_ids_lower: target_id = item_ids_lower[c_base]
 
                             if target_id:
                                 img_filename = f"{target_id}.png"
                                 img_path = os.path.join(cache_dir, img_filename)
-                                # 同樣使用查表，確認記憶體中是否不存在該圖
                                 if img_filename not in existing_files:
                                     data = obj.read()
                                     img = data.image
                                     w, h = img.size
                                     short_side = min(w, h)
                                     
+                                    # 🛡️ 舊版核心防線：過濾低解析度 Mipmap 縮圖（小於 127px 一律略過）
                                     if short_side < 127: continue
-                                    
-                                    ratio = 128.0 / short_side
-                                    new_w, new_h = int(round(w * ratio)), int(round(h * ratio))
-                                    
-                                    img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+
+                                    if target_res != "ORIGINAL":
+                                        t_res = int(target_res)
+                                        # 🛡️ 遵循舊版邏輯：以短邊齊平，保持長條資產（卡套/場地）不被壓扁萎縮
+                                        ratio = float(t_res) / float(short_side)
+                                        new_w, new_h = max(1, int(round(w * ratio))), max(1, int(round(h * ratio)))
+                                        img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+                                            
                                     img.save(img_path)
-                                    existing_files.add(img_filename) # 儲存新圖後，立刻向記憶體註冊，供後續查表
+                                    existing_files.add(img_filename)
                                 success += 1
                         except Exception: pass
             except Exception: pass
             finally:
-                # 🛡️ 修正記憶體釋放位置：確保整個 Bundle 內的所有物件都遍歷完成後，才於最外層釋放資源
                 if env: del env
         finish_cb(True, success, cache_dir)
+
+    @staticmethod
+    def format_search_item_display(card, search_lang="zh-tw"):
+        """✨ 多重資產規格化展示產生器 (DRY)"""
+        cid = str(card.get('id', ""))
+        header = card.get('header', [])
+        row = card.get('full_row', [])
+        
+        n_idx = MDEngine.find_lang_column_index(header, search_lang, "Name")
+        raw_name = row[n_idx].strip() if n_idx != -1 and len(row) > n_idx else ""
+        
+        all_entries = card.get('all_entries', [])
+        hash_blocks = []
+        
+        for entry in all_entries:
+            h_str = str(entry.get('hash', "")).strip()
+            if not h_str: continue
+            parts = [h_str]
+            
+            if len(all_entries) > 1:
+                c_str = str(entry.get('container', "")).strip()
+                if c_str and c_str != "Common":
+                    parts.append(f"({c_str})")
+                    
+                f_str = str(entry.get('folder', "")).strip()
+                if f_str and f_str != "0000":
+                    parts.append(f"<{f_str}>")
+                    
+            hash_blocks.append(" ".join(parts))
+            
+        # 降級保底防線：若沒有 all_entries 或提取失敗，退回原始單一 hash
+        if not hash_blocks:
+            fallback_h = str(card.get('hash', "")).strip()
+            if fallback_h:
+                hash_blocks.append(fallback_h)
+                
+        hash_block_str = ", ".join(hash_blocks)
+        
+        if raw_name:
+            return f"{cid} ({raw_name}) [{hash_block_str}]"
+        return f"{cid} [{hash_block_str}]"
 
     @staticmethod
     def search_cards(query, database, search_lang="zh-tw", limit=200, visual_only=False):
@@ -1024,34 +1080,36 @@ class MDEngine:
 
         results = []
         for card in database:
-            cid = card['id']
+            cid = str(card.get('id', ""))
             if visual_only and not MDEngine.is_visual_asset(cid): continue
-            header, row = card.get('header', []), card.get('full_row', [])
             
-            # 使用集中解析器獲取當前指定語系的名稱與效果索引
+            header, row = card.get('header', []), card.get('full_row', [])
             n_idx = MDEngine.find_lang_column_index(header, search_lang, "Name")
             d_idx = MDEngine.find_lang_column_index(header, search_lang, "Desc")
             
             raw_name = row[n_idx] if n_idx != -1 and len(row) > n_idx else ""
             raw_desc = row[d_idx] if d_idx != -1 and len(row) > d_idx else ""
             
-            cid = card['id']
-            chash = card['hash']
+            # ✨ 提取所有雜湊碼
+            all_entries = card.get('all_entries', [])
+            all_hashes = [str(e.get('hash', "")).lower() for e in all_entries if e.get('hash')]
+            if not all_hashes:
+                fallback_h = str(card.get('hash', "")).lower()
+                if fallback_h: all_hashes.append(fallback_h)
             
             s_cid = unicodedata.normalize('NFKC', cid).lower()
-            s_chash = unicodedata.normalize('NFKC', chash).lower()
             s_name = unicodedata.normalize('NFKC', raw_name).lower()
             s_desc = unicodedata.normalize('NFKC', raw_desc).lower()
             
             score = 0.0
             
             # 權重分級
-            if query_norm == s_cid or query_norm == s_chash: 
+            if query_norm == s_cid or query_norm in all_hashes: 
                 score = 2.0  
             elif query_norm == s_name: 
                 score = 1.8  
-            elif query_norm in s_cid or query_norm in s_chash: 
-                score = 1.5  
+            elif query_norm in s_cid or any(query_norm in h for h in all_hashes): 
+                score = 1.5
             elif query_norm in s_name: 
                 score = 1.0  
             elif query_norm in s_desc: 
@@ -1063,17 +1121,14 @@ class MDEngine:
             if score > 0:
                 cat = 1 if '(' in raw_name and ')' in raw_name else 0
                 if not raw_name: cat = 2
-                results.append((cat, score, {'id': cid, 'name': raw_name, 'hash': chash}))
+                results.append((cat, score, card)) # 👈 儲存完整 card 物件
         
         results.sort(key=lambda x: (x[0], -x[1]))
         
+        # ✨ 統一套用 DRY 格式化
         final_list = []
         for r in results[:limit]:
-            item = r[2]
-            if item['name']:
-                final_list.append(f"{item['id']} ({item['name']}) [{item['hash']}]")
-            else:
-                final_list.append(f"{item['id']} [{item['hash']}]")
+            final_list.append(MDEngine.format_search_item_display(r[2], search_lang))
                 
         return final_list
 
@@ -1090,8 +1145,8 @@ class MDEngine:
         return max_ratio
 
     @staticmethod
-    def search_cards_advanced(params, database, search_lang="zh-tw", current_page=1):
-        if not database: return [], 0, 0, 1, []
+    def search_cards_advanced(params, database, search_lang="zh-tw"):
+        if not database: return []
         
         import unicodedata
         query = params.get("query", "")
@@ -1136,10 +1191,16 @@ class MDEngine:
         all_unrestricted = not (chk_m_en or chk_s_en or chk_t_en)
         
         for card in database:
-            cid = str(card['id'])
-            chash = str(card['hash'])
-            header, row = card.get('header', []), card.get('full_row', [])
+            cid = str(card.get('id', ""))
             
+            # ✨ 提取所有雜湊碼
+            all_entries = card.get('all_entries', [])
+            all_hashes = [str(e.get('hash', "")).lower() for e in all_entries if e.get('hash')]
+            if not all_hashes:
+                fallback_h = str(card.get('hash', "")).lower()
+                if fallback_h: all_hashes.append(fallback_h)
+                
+            header, row = card.get('header', []), card.get('full_row', [])
             n_idx = MDEngine.find_lang_column_index(header, search_lang, "Name")
             d_idx = MDEngine.find_lang_column_index(header, search_lang, "Desc")
             
@@ -1154,9 +1215,9 @@ class MDEngine:
             is_passthrough = False
             if query:
                 q_clean = query.strip().lower()
-                if q_clean == cid.lower() or q_clean == chash.lower(): is_passthrough = True
-                # ✨ 修正：涵蓋檢查 cid, chash 與卡名
-                elif MDEngine.is_visual_asset(q_clean) and (q_clean in cid.lower() or q_clean in chash.lower() or q_clean in raw_name.lower()): is_passthrough = True
+                if q_clean == cid.lower() or q_clean in all_hashes: is_passthrough = True
+                # ✨ 修正：涵蓋檢查 cid, all_hashes 與卡名
+                elif MDEngine.is_visual_asset(q_clean) and (q_clean in cid.lower() or any(q_clean in h for h in all_hashes) or q_clean in raw_name.lower()): is_passthrough = True
             
             # --- 2. 視覺配件篩選 ---
             if visual_only and not MDEngine.is_visual_asset(cid): continue
@@ -1231,15 +1292,15 @@ class MDEngine:
             if score > 0:
                 cat = 1 if '(' in raw_name and ')' in raw_name else 0
                 if not raw_name: cat = 2
-                results.append((cat, score, {'id': cid, 'name': raw_name, 'hash': chash}))
+                results.append((cat, score, card)) # 👈 直接存入完整卡片字典
                 
         # --- 8. 排序與分頁切片 ---
         results.sort(key=lambda x: (x[0], -x[1]))
         
+        # ✨ 統一套用 DRY 格式化
         all_formatted = []
-        for dummy_cat, dummy_score, item in results:
-            if item['name']: all_formatted.append(f"{item['id']} ({item['name']}) [{item['hash']}]")
-            else: all_formatted.append(f"{item['id']} [{item['hash']}]")
+        for dummy_cat, dummy_score, item_card in results:
+            all_formatted.append(MDEngine.format_search_item_display(item_card, search_lang))
             
         return all_formatted # ✨ 修正：直接回傳全量清單，切片交由 Widget 處理
 
@@ -2289,6 +2350,7 @@ class MDEngine:
                 
             final_gif_frames[0].save(preview_path, save_all=True, append_images=final_gif_frames[1:], duration=duration_ms, loop=0, disposal=2, transparency=255)
             for img in final_gif_frames: img.close()
+            for f in frames_list: f.close()
             
             final_msg = _("GIF 預覽生成完畢！\n檔案儲存於：\n{path}").format(path=preview_path)
             if warn_msg:
@@ -2600,7 +2662,7 @@ class MDEngine:
             env = None
             try:
                 # 🛡️ 將硬碟 I/O 檢查移至子程序，讓多核心併發讀取，切除主程序排隊瓶頸
-                if opts.get('size_filter'):
+                if opts.get('size_filter') and folder_type != "data.unity3d":
                     f_size = os.path.getsize(file_path)
                     if not (opts['min_b'] <= f_size <= opts['max_b']): continue
                 
@@ -2608,7 +2670,7 @@ class MDEngine:
 
                 env = UnityPy.load(file_path)
                 
-                if not opts.get('deep_scan'):
+                if not opts.get('deep_scan') and folder_type != "data.unity3d":
                     for container_path, obj in env.container.items():
                         if obj.type.name in ("Texture2D", "TextAsset"):
                             clean_name = str(container_path).split('/')[-1].replace('.bmp', '').replace('.png', '')
@@ -2662,10 +2724,10 @@ class MDEngine:
                                     extracted.add(cutin_id)
                                     if opts['gen_csv']: mapping.append([folder_type, container_type, file_name, cutin_id])
                                 elif obj.type.name == "Texture2D":
-                                    if opts['only_num'] and not clean_name.isdigit(): continue
+                                    if folder_type != "data.unity3d" and opts['only_num'] and not clean_name.isdigit(): continue
                                     if not MDEngine.is_valuable_texture(clean_name): continue
                                     
-                                    container_type = "TCG/OCG" if "/tcg/" in c_path.lower() or "/ocg/" in c_path.lower() else "Common"
+                                    container_type = "CoreAsset" if folder_type == "data.unity3d" else ("TCG/OCG" if "/tcg/" in c_path.lower() or "/ocg/" in c_path.lower() else "Common")
                                     extracted.add(clean_name)
                                     if opts['gen_csv']: mapping.append([folder_type, container_type, file_name, clean_name])
                             except Exception: pass
@@ -2677,9 +2739,10 @@ class MDEngine:
 
     @staticmethod
     def _worker_extract_single(task_info):
-        file_path, file_name, out_img_dir, backup_dir, exp_csv, exp_img, exp_txt, exp_backup, visual_only = task_info
+        file_path, file_name, out_img_dir, backup_dir, exp_csv, exp_img, exp_txt, exp_backup, visual_only, target_ids_filter = task_info
         success_count, csv_rows = 0, []
-        if exp_backup:
+        # 🛡️ 致命 Bug 修復：絕對禁止把 data.unity3d 當作一般檔案拷貝進備份區
+        if exp_backup and file_name.lower() != "data.unity3d":
             try: shutil.copy2(file_path, os.path.join(backup_dir, file_name))
             except Exception: pass
         if file_name.lower().endswith(('.png', '.jpg', '.csv', '.txt', '.json')): return success_count, csv_rows, 1
@@ -2729,6 +2792,11 @@ class MDEngine:
                         else:
                             base_id = re.sub(r'_(l|m|s|128|256|512)$', "", clean_name, flags=re.IGNORECASE)
                         
+                        # 🛡️ 靶向萃取防線：轉小寫 O(1) 安全比對
+                        if target_ids_filter is not None:
+                            if base_id.lower() not in target_ids_filter and clean_name.lower() not in target_ids_filter:
+                                continue
+                        
                         if exp_img:
                             if data is None: data = obj.read()
                             out_path = os.path.join(out_img_dir, f"{base_id}.png")
@@ -2764,6 +2832,11 @@ class MDEngine:
                         
                         # 呼叫已經重構好的核心引擎，cutin_id 會直接給出如 p18826_hd.atlas 這樣完美的 ID
                         is_cutin, cutin_id = MDEngine.is_cutin_asset(c_path, "TextAsset", safe_name)
+                        
+                        # 🛡️ 靶向萃取防線：轉小寫 O(1) 安全比對
+                        if target_ids_filter is not None:
+                            if cutin_id.lower() not in target_ids_filter and safe_name.lower() not in target_ids_filter:
+                                continue
                         
                         if is_cutin and raw_script:
                             # 賦予對應的實體副檔名
@@ -2923,7 +2996,7 @@ class MDEngine:
                                     data.save()
                                     modded = True
             if modded:
-                with open(tgt_bundle, "wb") as f: f.write(env.file.save())
+                MDEngine.safe_write_bytes(tgt_bundle, env.file.save())
                 success = 1
         except Exception: pass
         finally:
@@ -2932,86 +3005,172 @@ class MDEngine:
 
     @staticmethod
     def _worker_stream_update_single(task_info):
+        """
+        [模組串流修復 - 單檔工作站]
+        解耦、防死鎖且記憶體安全的串流貼圖移植核心
+        """
         import gc
         gc.collect()
         MDEngine.check_memory_limit(85.0)
-        
+
         root_dir, file_name, clean_src_dir, out_base, overwrite, old_mod_dir = task_info
+        
+        # 1. 定位官方乾淨原檔
         clean_file = MDEngine.get_actual_bundle_path(clean_src_dir, file_name)
-        if not os.path.exists(clean_file): clean_file = MDEngine.get_actual_source_path(clean_src_dir, file_name, "StreamingAssets")
-        
-        # 🛡️ 補齊翻譯包裹：使用 format 將變數抽離
-        if not os.path.exists(clean_file): 
+        if not os.path.exists(clean_file):
+            clean_file = MDEngine.get_actual_source_path(clean_src_dir, file_name, "StreamingAssets")
+
+        if not os.path.exists(clean_file):
             return (0, _("[{file_name}] 找不到對應的遊戲乾淨原檔。").format(file_name=file_name))
-        
+
+        old_file_path = os.path.join(root_dir, file_name)
         old_env = None
         env_clean = None
+
         try:
-            old_env = UnityPy.load(os.path.join(root_dir, file_name))
+            # 2. 嚴格驗證來源檔與目標檔皆為 Unity Bundle
+            if not MDEngine.is_unity_bundle(old_file_path):
+                return (0, _("[{file_name}] 舊模組檔案並非合法的 Unity Bundle 格式。").format(file_name=file_name))
+            if not MDEngine.is_unity_bundle(clean_file):
+                return (0, _("[{file_name}] 遊戲原檔並非合法的 Unity Bundle 格式。").format(file_name=file_name))
+
+            old_env = UnityPy.load(old_file_path)
+
+            # 3. 雙軌收集舊模組中的貼圖資源 (Container + Objects)
             old_obj_map = {}
-            for path, obj in old_env.container.items():
-                if obj.type.name == "Texture2D": 
-                    name_key = path.split('/')[-1].replace('.bmp', '').replace('.png', '')
-                    old_obj_map[name_key] = obj
-            
+            path_to_container_old = {obj.path_id: str(c_path) for c_path, obj in old_env.container.items()}
+
+            for obj in old_env.objects:
+                if obj.type.name == "Texture2D":
+                    c_path = path_to_container_old.get(obj.path_id, "")
+                    c_clean = ""
+                    if c_path:
+                        c_clean = c_path.replace('\\', '/').split('/')[-1].replace('.prefab', '').replace('.mat', '').replace('.bmp', '').replace('.png', '').strip()
+
+                    obj_name = ""
+                    try:
+                        if hasattr(obj, "peek_name"):
+                            peeked = obj.peek_name()
+                            if peeked:
+                                obj_name = str(peeked)
+                        if not obj_name:
+                            data_reader = obj.read()
+                            if hasattr(data_reader, "name") and data_reader.name:
+                                obj_name = str(data_reader.name)
+                    except Exception:
+                        pass
+                    obj_name = obj_name.replace('.bmp', '').replace('.png', '').strip()
+
+                    # 將候選名稱全數註冊至映射表 (含規格化同化鍵值)
+                    for candidate_name in [c_clean, obj_name]:
+                        if candidate_name:
+                            norm_key = MDEngine.normalize_string(candidate_name)
+                            if norm_key:
+                                old_obj_map[norm_key] = obj
+                                # 剝離常見縮圖/解析度後綴以利比對
+                                base_key = re.sub(r'_(l|m|s|128|256|512)$', "", norm_key, flags=re.IGNORECASE)
+                                if base_key not in old_obj_map:
+                                    old_obj_map[base_key] = obj
+
+            # 若此檔案完全不含 Texture2D 資源，安全回報（絕不使用 del 避免符號表被銷毀）
             if not old_obj_map:
-                del old_env
                 return (0, _("[{file_name}] 舊模組中未發現 Texture2D 貼圖資源。").format(file_name=file_name))
-                
+
+            # 4. 讀取乾淨原檔並執行貼圖資料流替換
             env_clean = UnityPy.load(clean_file)
             injected = False
-            
-            for path, obj in env_clean.container.items():
-                name_key = path.split('/')[-1].replace('.bmp', '').replace('.png', '')
-                if obj.type.name == "Texture2D" and name_key in old_obj_map:
-                    old_data = old_obj_map[name_key].read()
-                    new_data = obj.read()
-                    
-                    # 🛡️ 修正：Texture2D 實體沒有 get_raw_data 方法，真實的純圖片資料存在 image_data 中
-                    raw_bytes = getattr(old_data, 'image_data', b'')
-                    
-                    if not raw_bytes:
-                        continue
-                        
-                    if hasattr(old_data, 'm_TextureFormat') and hasattr(new_data, 'm_TextureFormat'):
-                        if old_data.m_TextureFormat != new_data.m_TextureFormat:
+            path_to_container_clean = {obj.path_id: str(c_path) for c_path, obj in env_clean.container.items()}
+
+            for obj in env_clean.objects:
+                if obj.type.name == "Texture2D":
+                    c_path = path_to_container_clean.get(obj.path_id, "")
+                    c_clean = ""
+                    if c_path:
+                        c_clean = c_path.replace('\\', '/').split('/')[-1].replace('.prefab', '').replace('.mat', '').replace('.bmp', '').replace('.png', '').strip()
+
+                    obj_name = ""
+                    try:
+                        if hasattr(obj, "peek_name"):
+                            peeked = obj.peek_name()
+                            if peeked:
+                                obj_name = str(peeked)
+                        if not obj_name:
+                            data_reader = obj.read()
+                            if hasattr(data_reader, "name") and data_reader.name:
+                                obj_name = str(data_reader.name)
+                    except Exception:
+                        pass
+                    obj_name = obj_name.replace('.bmp', '').replace('.png', '').strip()
+
+                    # 雙向同化比對舊貼圖
+                    matched_old_obj = None
+                    for candidate_name in [c_clean, obj_name]:
+                        if not candidate_name:
+                            continue
+                        norm_key = MDEngine.normalize_string(candidate_name)
+                        base_key = re.sub(r'_(l|m|s|128|256|512)$', "", norm_key, flags=re.IGNORECASE)
+                        if norm_key in old_obj_map:
+                            matched_old_obj = old_obj_map[norm_key]
+                            break
+                        elif base_key in old_obj_map:
+                            matched_old_obj = old_obj_map[base_key]
+                            break
+
+                    if matched_old_obj:
+                        old_data = matched_old_obj.read()
+                        new_data = obj.read()
+
+                        raw_bytes = getattr(old_data, 'image_data', b'')
+                        if not raw_bytes:
                             continue
 
-                    if hasattr(new_data, "m_StreamData") and new_data.m_StreamData:
-                        new_data.m_StreamData.path = ""
-                        new_data.m_StreamData.offset = 0
-                        new_data.m_StreamData.size = 0
+                        # 格式一致性檢查
+                        if hasattr(old_data, 'm_TextureFormat') and hasattr(new_data, 'm_TextureFormat'):
+                            if old_data.m_TextureFormat != new_data.m_TextureFormat:
+                                continue
 
-                    new_data.image_data = raw_bytes
-                    new_data.m_Width = old_data.m_Width
-                    new_data.m_Height = old_data.m_Height
-                    new_data.m_TextureFormat = old_data.m_TextureFormat
-                    
-                    if hasattr(old_data, 'm_MipCount') and hasattr(new_data, 'm_MipCount'):
-                        new_data.m_MipCount = old_data.m_MipCount
-                        
-                    if hasattr(new_data, 'm_CompleteImageSize'):
-                        new_data.m_CompleteImageSize = len(raw_bytes)
-                    
-                    # ✨ 核心修正：串流修復時，同樣利用正則確保動畫貼圖維持正確的 Gamma 空間
-                    if re.match(r'^p\d+', name_key, re.IGNORECASE) and hasattr(new_data, "m_ColorSpace"):
-                        new_data.m_ColorSpace = 0
-                        
-                    new_data.save()
-                    injected = True
-                    
+                        # 剝除官方串流引導指標
+                        if hasattr(new_data, "m_StreamData") and new_data.m_StreamData:
+                            new_data.m_StreamData.path = ""
+                            new_data.m_StreamData.offset = 0
+                            new_data.m_StreamData.size = 0
+
+                        new_data.image_data = raw_bytes
+                        new_data.m_Width = old_data.m_Width
+                        new_data.m_Height = old_data.m_Height
+                        new_data.m_TextureFormat = old_data.m_TextureFormat
+
+                        if hasattr(old_data, 'm_MipCount') and hasattr(new_data, 'm_MipCount'):
+                            new_data.m_MipCount = old_data.m_MipCount
+
+                        if hasattr(new_data, 'm_CompleteImageSize'):
+                            new_data.m_CompleteImageSize = len(raw_bytes)
+
+                        # 動畫資產 Gamma 色彩空間防雜訊修正
+                        check_target_name = c_clean if c_clean else obj_name
+                        if re.match(r'^p\d+', check_target_name, re.IGNORECASE) and hasattr(new_data, "m_ColorSpace"):
+                            new_data.m_ColorSpace = 0
+
+                        new_data.save()
+                        injected = True
+
+            # 5. 原子化輸出寫入
             if injected:
                 out_hash_dir = root_dir if overwrite else os.path.normpath(os.path.join(out_base, os.path.relpath(root_dir, old_mod_dir)))
-                if not overwrite: os.makedirs(out_hash_dir, exist_ok=True)
-                with open(os.path.join(out_hash_dir, file_name), "wb") as f: f.write(env_clean.file.save())
-                
-            # 🛡️ 補齊翻譯包裹
+                if not overwrite:
+                    os.makedirs(out_hash_dir, exist_ok=True)
+                target_bundle_path = os.path.join(out_hash_dir, file_name)
+                MDEngine.safe_write_bytes(target_bundle_path, env_clean.file.save()) # 🛡️ 套用原子化寫入
+
             return (1, None) if injected else (0, _("[{file_name}] 未能成功注入任何貼圖 (可能格式不相容)。").format(file_name=file_name))
-        except Exception as e: 
-            return (0, _("[{file_name}] 核心處理例外崩潰: {error}").format(file_name=file_name, error=str(e)))
+
+        except Exception as task_err:
+            return (0, _("[{file_name}] 核心處理例外崩潰: {error}").format(file_name=file_name, error=str(task_err)))
+
         finally:
-            if old_env: del old_env
-            if env_clean: del env_clean
+            # 🛡️ 規範防禦：置為 None 清除引用交由 GC，絕對不使用 del 避免 UnboundLocalError
+            old_env = None
+            env_clean = None
 
     @staticmethod
     def task_scan(target_dir, out_dir, txt_name, csv_name, opts, progress_cb, finish_cb):
@@ -3048,6 +3207,10 @@ class MDEngine:
             
             stop_event = opts.get('stop_event') # 🛡️ 提取中斷標記
             
+            data_path = MDEngine.get_data_unity3d_safe(target_dir)
+            if os.path.exists(data_path) and MDEngine.is_unity_bundle(data_path):
+                raw_files.append((data_path, "data.unity3d", "data.unity3d"))
+                
             for d in target_dirs:
                 if stop_event and stop_event.is_set(): break # 🛡️ 第一層煞車
                 folder_type = "StreamingAssets" if "StreamingAssets" in d else "0000"
@@ -3156,6 +3319,10 @@ class MDEngine:
 
         raw_files = []
         stop_event = opts.get('stop_event') # 🛡️ 提取中斷標記
+
+        data_path = MDEngine.get_data_unity3d_safe(target_dir)
+        if os.path.exists(data_path) and MDEngine.is_unity_bundle(data_path):
+            raw_files.append((data_path, "data.unity3d", "data.unity3d"))
         
         for d in target_dirs:
             if stop_event and stop_event.is_set(): break # 🛡️ 第一層煞車
@@ -3227,7 +3394,7 @@ class MDEngine:
                 else:
                     d_idx = len(header); header.append(d_head)
                 
-                existing_hashes = set() 
+                existing_entries = set()
                 
                 updated_rows.append(header)
                 for row in reader:
@@ -3239,8 +3406,8 @@ class MDEngine:
                     h_name = row[h_idx].strip() if h_idx != -1 and len(row) > h_idx else ""
                     c_id = row[id_idx].strip() if id_idx != -1 and len(row) > id_idx else ""
                     
-                    # 僅註冊已存在的 Hash
-                    if h_name: existing_hashes.add(h_name)
+                    # 註冊已存在的 Hash 與 ID 雙鍵組
+                    if h_name and c_id: existing_entries.add((h_name, c_id))
                     
                     name, desc, props = MDEngine.get_info_from_db(aligned_db, h_name, c_id) 
                     
@@ -3255,8 +3422,8 @@ class MDEngine:
             mapping_data = MDEngine._scan_bundles_parallel(target_dir, opts, progress_cb)
             
             for folder, container, h_name, c_id in mapping_data:
-                # ✨ 核心修正：只認 Hash！只要是遊戲新出的檔案，就無條件為它建立全新的一列
-                if h_name not in existing_hashes:
+                # ✨ 核心修正：認 Hash 與 ID 雙鍵組，徹底實現一雜湊對多物件
+                if (h_name, c_id) not in existing_entries:
                     new_row = [""] * len(header)
                     if f_idx != -1: new_row[f_idx] = folder
                     if c_idx != -1: new_row[c_idx] = container
@@ -3272,7 +3439,7 @@ class MDEngine:
                             
                     updated_rows.append(new_row)
                     # 追加完畢後，註冊進記憶體，防止後續重複添加
-                    existing_hashes.add(h_name)
+                    existing_entries.add((h_name, c_id))
                     
             def sort_key(row):
                 val = str(row[id_idx]).strip() if id_idx != -1 and len(row) > id_idx else ""
@@ -3309,13 +3476,23 @@ class MDEngine:
             
             # 1. 整理去重任務清單 (確保 I/O 不會踩踏)
             tasks = set()
+            data_unity3d_targets = set()
             for card_id in target_ids:
                 if visual_only and not MDEngine.is_visual_asset(card_id): continue
                 if card_id in mapping_dict:
                     for item in mapping_dict[card_id]:
-                        src = MDEngine.get_actual_source_path(src_dir, item['hash'], item['folder'])
-                        dst = os.path.join(out_dir, item['hash'])
-                        tasks.add((src, dst))
+                        if item['folder'] == "data.unity3d" or item['hash'] == "data.unity3d":
+                            data_unity3d_targets.add(card_id)
+                        else:
+                            src = MDEngine.get_actual_source_path(src_dir, item['hash'], item['folder'])
+                            dst = os.path.join(out_dir, item['hash'])
+                            tasks.add((src, dst))
+            
+            # 🛡️ 核心資產分流：不執行實體複製，轉而產生靶向清單
+            if data_unity3d_targets:
+                parent_dir = os.path.dirname(os.path.normpath(out_dir))
+                with open(os.path.join(parent_dir, "Data_Unity3d_Targets.txt"), "w", encoding="utf-8") as f:
+                    f.write("\n".join(sorted(data_unity3d_targets)))
             
             # 2. 多執行緒派發 (使用 ThreadPool 極速調度 SSD 寫入佇列)
             success, count = 0, 0
@@ -3328,11 +3505,11 @@ class MDEngine:
                     try: success += future.result()
                     except Exception: pass
                     
-            finish_cb(True, success, None)
+            finish_cb(True, success, len(data_unity3d_targets))
         except Exception as e: finish_cb(False, str(e), traceback.format_exc())
 
     @staticmethod
-    def task_extract(hash_dir, img_folder, backup_folder, csv_name, exp_csv, exp_img, exp_txt, exp_backup, master_csv_path, visual_only, progress_cb, finish_cb):
+    def task_extract(hash_dir, img_folder, backup_folder, csv_name, exp_csv, exp_img, exp_txt, exp_backup, master_csv_path, visual_only, original_src_dir, progress_cb, finish_cb):
         try:
             parent_dir = os.path.dirname(hash_dir)
             out_img_dir, backup_dir = os.path.join(parent_dir, img_folder or "原卡圖"), os.path.join(parent_dir, backup_folder or "文件備份")
@@ -3340,21 +3517,33 @@ class MDEngine:
             if exp_img or exp_txt: os.makedirs(out_img_dir, exist_ok=True)
             if exp_backup: os.makedirs(backup_dir, exist_ok=True)
             
-            # 🛡️ 提前將主對照表載入記憶體，建立 Hash -> 屬性 的 O(1) 速查表
             hash_to_meta = {}
             if exp_csv and os.path.exists(master_csv_path):
-                mapping, _db = MDEngine.get_csv_data(master_csv_path)
+                mapping, dummy_db = MDEngine.get_csv_data(master_csv_path)
                 for items in mapping.values():
                     for item in items:
                         hash_to_meta[item['hash']] = (item['folder'], item['container'])
             
-            # 🛡️ 展開迴圈並套用動態剪枝，防止把剛提取出來的備份又當作來源讀取
             tasks = []
             exclude_paths = [out_img_dir, backup_dir, MDEngine.TEMP_DIR]
             for root, dummy_dirs, files in os.walk(hash_dir):
                 MDEngine.prune_walk_dirs(root, dummy_dirs, exclude_paths)
                 for f in files:
-                    tasks.append((os.path.join(root, f), f, out_img_dir, backup_dir, exp_csv, exp_img, exp_txt, exp_backup, visual_only))
+                    if f.lower() == "data.unity3d": continue # 🛡️ 安全守門：拒絕全解大檔
+                    tasks.append((os.path.join(root, f), f, out_img_dir, backup_dir, exp_csv, exp_img, exp_txt, exp_backup, visual_only, None))
+                    
+            # --- 核心資產靶向萃取防線 ---
+            targets_file = os.path.join(parent_dir, "Data_Unity3d_Targets.txt")
+            if os.path.exists(targets_file):
+                try:
+                    with open(targets_file, "r", encoding="utf-8") as tf:
+                        data_targets = {line.strip().lower() for line in tf if line.strip()}
+                    if data_targets:
+                        data_path = MDEngine.get_data_unity3d_safe(original_src_dir)
+                        if data_path and os.path.exists(data_path):
+                            # 🛡️ 傳遞目標清單，並強制關閉 exp_backup 確保安全
+                            tasks.append((data_path, "data.unity3d", out_img_dir, backup_dir, exp_csv, exp_img, exp_txt, False, False, data_targets))
+                except Exception: pass
                     
             success, count, all_csv_rows = 0, 0, []
             
@@ -3373,7 +3562,7 @@ class MDEngine:
                 master_header = [MDEngine.CSV_HEADER_FOLDER, MDEngine.CSV_HEADER_CONTAINER] + PROP_HEADERS + [MDEngine.CSV_HEADER_FILE_ID, MDEngine.CSV_HEADER_ITEM_ID]
                 
                 if os.path.exists(master_csv_path):
-                    _m, db = MDEngine.get_csv_data(master_csv_path)
+                    dummy_map, db = MDEngine.get_csv_data(master_csv_path)
                     if db and 'header' in db[0]:
                         master_header = list(db[0]['header'])
                     id_to_row = {d['id']: d.get('full_row', []) for d in db}
@@ -3446,7 +3635,8 @@ class MDEngine:
                 for test_id in [img_name, os.path.splitext(img_name)[0], base_id, clean_base]:
                     if test_id in mapping_dict:
                         for item in mapping_dict[test_id]: 
-                            # 🛡️ 傳遞 img_name 與 mapped_id 的對應關係，取代單純的 list
+                            # 🛡️ 解耦分流：常規替換引擎完全無視 data.unity3d，防止無效喚醒
+                            if item['folder'] == "data.unity3d" or item['hash'] == "data.unity3d": continue
                             target_bundles.setdefault(item['hash'], {})[img_name] = base_id
                         break
             tasks = [(h, imgs_dict, mod_img_dir, backup_dir, out_dir) for h, imgs_dict in target_bundles.items()]
@@ -3463,7 +3653,7 @@ class MDEngine:
         except Exception as e: finish_cb(False, str(e), traceback.format_exc())
 
     @staticmethod
-    def task_package(root_path, mod_name, readme_text, tex_src_folder, pack_zip, csv_path, backup_folder, out_folder, pendulum_backup_name, include_mod, include_readme, csv_filename, progress_cb, finish_cb):
+    def task_package(root_path, mod_name, readme_text, tex_src_folder, pack_zip, csv_path, backup_folder, out_folder, pendulum_backup_name, include_card_art, include_readme, csv_filename, progress_cb, finish_cb):
         try:
             out_dir = os.path.join(root_path, mod_name)
             os.makedirs(out_dir, exist_ok=True)
@@ -3471,7 +3661,7 @@ class MDEngine:
                 with open(os.path.join(out_dir, "ReadMe.txt"), "w", encoding="utf-8") as f: f.write(readme_text)
             hash_to_folder = {}
             if os.path.exists(csv_path):
-                mapping, _db = MDEngine.get_csv_data(csv_path)
+                mapping, dummy_db = MDEngine.get_csv_data(csv_path)
                 for items in mapping.values():
                     for item in items: hash_to_folder[item['hash']] = item['folder']
             def smart_package(src, dst_base, is_backup=False):
@@ -3482,26 +3672,39 @@ class MDEngine:
                     s = os.path.join(src, item)
                     if os.path.isfile(s) and len(item) >= 2:
                         folder = hash_to_folder.get(item, "0000")
-                        t_dir = os.path.join(dst_base, "backup" if is_backup else "", "masterduel_Data", "StreamingAssets", "AssetBundle") if folder == "StreamingAssets" else os.path.join(dst_base, "backup" if is_backup else "", "0000", item[:2].lower())
+                        if folder == "data.unity3d" or item == "data.unity3d":
+                            t_dir = os.path.join(dst_base, "backup" if is_backup else "", "masterduel_Data")
+                        elif folder == "StreamingAssets":
+                            t_dir = os.path.join(dst_base, "backup" if is_backup else "", "masterduel_Data", "StreamingAssets", "AssetBundle")
+                        else:
+                            t_dir = os.path.join(dst_base, "backup" if is_backup else "", "0000", item[:2].lower())
                         os.makedirs(t_dir, exist_ok=True)
                         shutil.copy2(s, os.path.join(t_dir, item))
                     elif os.path.isdir(s):
                         for sub_item in os.listdir(s):
                             sub_s = os.path.join(s, sub_item)
                             if os.path.isfile(sub_s) and len(sub_item) >= 2:
-                                folder = hash_to_folder.get(sub_item, "0000")
-                                t_dir = os.path.join(dst_base, "backup" if is_backup else "", "masterduel_Data", "StreamingAssets", "AssetBundle") if folder == "StreamingAssets" else os.path.join(dst_base, "backup" if is_backup else "", "0000", sub_item[:2].lower())
+                                folder = hash_to_folder.get(sub_item, "0000") # 🛡️ 修復：使用 sub_item 判斷
+                                if folder == "data.unity3d" or sub_item == "data.unity3d":
+                                    t_dir = os.path.join(dst_base, "backup" if is_backup else "", "masterduel_Data")
+                                elif folder == "StreamingAssets":
+                                    t_dir = os.path.join(dst_base, "backup" if is_backup else "", "masterduel_Data", "StreamingAssets", "AssetBundle")
+                                else:
+                                    t_dir = os.path.join(dst_base, "backup" if is_backup else "", "0000", sub_item[:2].lower()) # 🛡️ 修復：切割正確的子檔名前綴
                                 os.makedirs(t_dir, exist_ok=True)
                                 shutil.copy2(sub_s, os.path.join(t_dir, sub_item))
+            # 🛡️ 核心基底：無條件建立原檔備份與遊戲 0000 檔案
             smart_package(os.path.join(root_path, backup_folder or "文件備份"), out_dir, True)
-            if include_mod:
-                smart_package(os.path.join(root_path, out_folder or "改完的文件"), out_dir, False)
+            smart_package(os.path.join(root_path, out_folder or "改完的文件"), out_dir, False)
+            
             target_csv = os.path.join(root_path, csv_filename)
             if os.path.exists(target_csv):
                 try: shutil.copy2(target_csv, os.path.join(out_dir, csv_filename))
                 except Exception: pass
+                
             tex_dst = os.path.join(out_dir, "texture")
-            if os.path.exists(tex_src_folder):
+            # 🛡️ 動態控制：只有在使用者勾選附帶卡圖改，且該資料夾存在時才複製
+            if include_card_art and os.path.exists(tex_src_folder):
                 if os.path.exists(tex_dst): shutil.rmtree(tex_dst)
                 
                 # 動態找出備份資料夾 (精準匹配設定名稱，或包含備份特徵關鍵字)
@@ -3611,6 +3814,8 @@ class MDEngine:
 
         # 策略 4: 超框化處理 (11:16 裁切與相框疊加)
         if mode == "MODE_OVERFRAME":
+            try: import numpy as np
+            except ImportError: np = None
             frame_name = MDEngine.get_frame_template_name(card_type, sub_type)
             frame_dir = os.path.join(os.getcwd(), "MD_Tool_Essential", "CardFrame")
             psd_path = os.path.join(frame_dir, f"{frame_name}.psd")
@@ -3750,8 +3955,10 @@ class MDEngine:
                     if fname in ["PeriFrame", "ArtFrame", "EffFrame"]:
                         m_3frames_clean |= layer_mask
                     
-                # 軌道 A：只有使用 -ch 角色圖層時，才強制自動觸發「角色超框交集挖空」
-                if options.get("is_advanced", False):
+                enable_punch = options.get("adv_punch_alpha", True)
+                
+                # 軌道 A：只有使用 -ch 角色圖層「且」開啟挖空開關時，才自動觸發交集挖空
+                if options.get("is_advanced", False) and enable_punch:
                     m_character_punch = m_ch_art & m_3frames_clean
                 else:
                     m_character_punch = empty_mask
@@ -3759,27 +3966,36 @@ class MDEngine:
                 # 最終 Alpha 歸零遮罩 = 角色超框挖空 ∪ 使用者手動整塊挖空
                 m_final_zero = m_character_punch | m_explicit_dirty
 
-                # --- 🚀 階段 5：分支輸出與頂層著色器模擬 ---
+                # --- 🚀 階段 5：末端記憶體分流與頂層著色器模擬 ---
                 if is_preview:
+                    # 【右側視圖：實體輸出拷貝】(保留挖空透明通道)
+                    data_out = data.copy()
+                    data_out[m_final_zero, 3] = 0
+                    img_out = Image.fromarray(data_out, "RGBA")
+
+                    # 【左側視圖：遊戲內模擬拷貝】(填滿底色並疊加高光)
+                    data_game = data.copy()
                     if sim_enable:
                         m_shine_preview = np.zeros((1024, 704), dtype=bool)
                         for fname in ["PeriFrame", "NameBox", "ArtFrame", "EffFrame", "EffBox", "BackGround"]:
                             if prev_dict.get(fname, False):
                                 m_shine_preview |= raw_masks.get(fname, empty_mask)
                                 
-                        # 扣除 Alpha 為 0 的挖空區域，模擬遊戲真實 3D 著色器行為
                         m_shine_top = m_shine_preview & ~m_final_zero
                         
                         if np.any(m_shine_top):
-                            prev_img = Image.fromarray(data, "RGBA")
+                            prev_img = Image.fromarray(data_game, "RGBA")
                             prev_img = MDEngine._simulate_foil(prev_img, m_shine_top, foil_params, use_alpha_weight=False)
-                            data = np.array(prev_img, dtype=np.uint8)
+                            data_game = np.array(prev_img, dtype=np.uint8)
                             
-                    # 預覽畫面強制將背景設為不透明，以防 Qt 渲染黑塊，但光斑已經完美避開了透明挖空區
-                    data[:, :, 3] = 255
-                    new_img = Image.fromarray(data, "RGBA")
+                    # 遊戲模擬視圖強制將背景補滿，展現遊戲內 3D 穿透前的完整狀態
+                    data_game[:, :, 3] = 255
+                    img_game = Image.fromarray(data_game, "RGBA")
+                    
+                    # 🛡️ 雙段式預覽：直接回傳 Tuple
+                    return img_game, img_out
                 else:
-                    # 實際輸出：精準寫入透明化遮罩
+                    # 實際硬碟輸出：精準寫入透明化遮罩
                     data[m_final_zero, 3] = 0
                     new_img = Image.fromarray(data, "RGBA")
                     
@@ -3821,12 +4037,21 @@ class MDEngine:
 
                 res_img = MDEngine.process_texture_image(img, img_name, card_dict, strategy_mode, options)
                 
-                # 轉化為 QImage 提供給 UI
-                data = res_img.tobytes("raw", "RGBA")
-                
-                # 🛡️ 致命閃退修復 1：加上 res_img.width * 4 (bytesPerLine) 確保記憶體對齊
-                qimg = QImage(data, res_img.width, res_img.height, res_img.width * 4, QImage.Format_RGBA8888).copy()
-                finish_cb(True, qimg, None)
+                # 🛡️ 辨識是否為雙段式回傳
+                if isinstance(res_img, tuple):
+                    res_game, res_out = res_img
+                    d_game = res_game.tobytes("raw", "RGBA")
+                    qimg_game = QImage(d_game, res_game.width, res_game.height, res_game.width * 4, QImage.Format_RGBA8888).copy()
+                    
+                    d_out = res_out.tobytes("raw", "RGBA")
+                    qimg_out = QImage(d_out, res_out.width, res_out.height, res_out.width * 4, QImage.Format_RGBA8888).copy()
+                    
+                    finish_cb(True, (qimg_game, qimg_out), None)
+                else:
+                    # 動畫或靈擺模式單圖片回傳
+                    data = res_img.tobytes("raw", "RGBA")
+                    qimg = QImage(data, res_img.width, res_img.height, res_img.width * 4, QImage.Format_RGBA8888).copy()
+                    finish_cb(True, qimg, None)
         except Exception as e:
             finish_cb(False, str(e), None)
 
@@ -4056,22 +4281,32 @@ class MDEngine:
     @staticmethod
     def task_quick_replace(target_id, csv_path, src_dir, out_root, img_path, overwrite, backup_folder, out_folder, progress_cb, finish_cb):
         try:
-            mapping, _db = MDEngine.get_csv_data(csv_path)
+            mapping, dummy_db = MDEngine.get_csv_data(csv_path)
             if target_id not in mapping: raise Exception(_("CSV 中找不到 ID: {id}").format(id=target_id))
             success, count = 0, 0
             for item in mapping[target_id]:
                 hash_name, folder = item['hash'], item['folder']
                 count += 1
                 if progress_cb: progress_cb(count)
-                src_file = MDEngine.get_actual_source_path(src_dir, hash_name, folder)
-                if not os.path.exists(src_file): continue
-                if folder == "StreamingAssets":
-                    tgt_backup = os.path.join(out_root, backup_folder or "文件備份", "masterduel_Data", "StreamingAssets", "AssetBundle")
-                    tgt_modded = os.path.join(out_root, out_folder or "改完的文件", "masterduel_Data", "StreamingAssets", "AssetBundle")
+                
+                # --- 新增核心資產分流判定與致命路徑 Bug 修復 ---
+                if folder == "data.unity3d" or hash_name == "data.unity3d":
+                    src_file = MDEngine.get_data_unity3d_safe(src_dir)
+                    # 🛡️ 貫徹裸檔輸出原則，交由打包功能 (Tab 5) 處理資料夾結構
+                    tgt_backup = os.path.join(out_root, backup_folder or "文件備份")
+                    tgt_modded = os.path.join(out_root, out_folder or "改完的文件")
+                    hash_name = "data.unity3d"
                 else:
-                    hash_prefix = hash_name[:2].lower()
-                    tgt_backup = os.path.join(out_root, backup_folder or "文件備份", "0000", hash_prefix)
-                    tgt_modded = os.path.join(out_root, out_folder or "改完的文件", "0000", hash_prefix)
+                    src_file = MDEngine.get_actual_source_path(src_dir, hash_name, folder)
+                    if folder == "StreamingAssets":
+                        tgt_backup = os.path.join(out_root, backup_folder or "文件備份", "masterduel_Data", "StreamingAssets", "AssetBundle")
+                        tgt_modded = os.path.join(out_root, out_folder or "改完的文件", "masterduel_Data", "StreamingAssets", "AssetBundle")
+                    else:
+                        hash_prefix = hash_name[:2].lower()
+                        tgt_backup = os.path.join(out_root, backup_folder or "文件備份", "0000", hash_prefix)
+                        tgt_modded = os.path.join(out_root, out_folder or "改完的文件", "0000", hash_prefix)
+                        
+                if not os.path.exists(src_file): continue
                 os.makedirs(tgt_backup, exist_ok=True)
                 os.makedirs(tgt_modded, exist_ok=True)
                 backup_file = os.path.join(tgt_backup, hash_name)
@@ -4081,14 +4316,39 @@ class MDEngine:
                 env = None
                 try:
                     env = UnityPy.load(src_file)
-                    
-                    # ✨ 呼叫 DRY 核心注入器
                     modded_flag = MDEngine._inject_texture_core(env, target_id, img_path)
                     
                     if modded_flag:
-                        MDEngine.safe_write_bytes(modded_file, env.file.save()) # 🛡️ 套用原子化寫入
-                        if overwrite: MDEngine.safe_copy_file(modded_file, src_file) # 🛡️ 套用原子化覆寫
+                        MDEngine.safe_write_bytes(modded_file, env.file.save()) 
+                        if overwrite: MDEngine.safe_copy_file(modded_file, src_file) 
                         success += 1
+                        
+                        # --- 核心歷史紀錄同步寫入 (防孤島化) ---
+                        if hash_name == "data.unity3d":
+                            workspace_dir = os.path.join(MDEngine.TEMP_DIR, "data_unity3d_workspace")
+                            os.makedirs(workspace_dir, exist_ok=True)
+                            manifest_path = os.path.join(workspace_dir, "data_mod_manifest.json")
+                            pristine_path = os.path.join(workspace_dir, "data.unity3d.pristine")
+                            
+                            if not os.path.exists(pristine_path):
+                                MDEngine.safe_copy_file(backup_file, pristine_path)
+                                
+                            manifest = {"pristine": {}, "last_injected": {}, "registered_mods": {}}
+                            if os.path.exists(manifest_path):
+                                try:
+                                    with open(manifest_path, "r", encoding="utf-8") as f:
+                                        manifest = json.load(f)
+                                except Exception: pass
+                                
+                            manifest.setdefault("registered_mods", {})[target_id] = {"source_path": img_path, "type": "Texture2D"}
+                            manifest["last_injected"] = {"size": os.path.getsize(modded_file), "mtime": os.path.getmtime(modded_file)}
+                            
+                            if not manifest.get("pristine") or not manifest["pristine"].get("size"):
+                                manifest["pristine"] = {"size": os.path.getsize(pristine_path), "mtime": os.path.getmtime(pristine_path)}
+                                
+                            with open(manifest_path, "w", encoding="utf-8") as f:
+                                json.dump(manifest, f, indent=4, ensure_ascii=False)
+
                 except Exception: pass
                 finally:
                     if env: del env
@@ -4101,41 +4361,92 @@ class MDEngine:
 
     @staticmethod
     def task_stream_update(old_mod_dir, clean_src_dir, out_root, overwrite, progress_cb, finish_cb):
+        """
+        [模組串流修復 - 批次調度器]
+        具備全域例外隔離與安全日誌機制的非同步任務引擎
+        """
         try:
-            success, count = 0, 0
+            success = 0
+            count = 0
             out_base = old_mod_dir if overwrite else os.path.join(out_root, "FIXED_MOD")
-            
+
             tasks = []
             exclude_paths = [out_base] if not overwrite else []
-            # 🛡️ 防護：將所有 _dirs 替換為 dirs_list，絕對杜絕底線變數污染
+
+            # 擴充忽略副檔名清單，防止非 Bundle 檔案或既有日誌檔被納入掃描
+            ignore_exts = (
+                '.png', '.jpg', '.jpeg', '.bmp', '.txt', '.csv', '.json',
+                '.bytes', '.atlas', '.log', '.zip', '.rar', '.7z', '.tmp', '.bak'
+            )
+
             for root, dirs_list, files in os.walk(old_mod_dir):
                 MDEngine.prune_walk_dirs(root, dirs_list, exclude_paths)
-                for f in files:
-                    if not f.lower().endswith(('.png', '.jpg', '.txt', '.csv', '.json', '.bytes')):
-                        tasks.append((root, f, clean_src_dir, out_base, overwrite, old_mod_dir))
-            
+                for candidate_file in files:
+                    if not candidate_file.lower().endswith(ignore_exts):
+                        full_candidate_path = os.path.join(root, candidate_file)
+                        # 🛡️ 實體檔頭校驗：確認二進位頭包含 UnityFS/UnityWeb 等
+                        if MDEngine.is_unity_bundle(full_candidate_path):
+                            tasks.append((root, candidate_file, clean_src_dir, out_base, overwrite, old_mod_dir))
+
             errors = []
-            with concurrent.futures.ProcessPoolExecutor(max_workers=MDEngine.get_heavy_task_workers(), initializer=_init_worker, initargs=(UI_LANG_DICT,)) as executor:
-                for res, err in executor.map(MDEngine._worker_stream_update_single, tasks, chunksize=1):
+            total_tasks = len(tasks)
+
+            if total_tasks == 0:
+                return finish_cb(True, 0, out_base)
+
+            workers_count = MDEngine.get_heavy_task_workers()
+            with concurrent.futures.ProcessPoolExecutor(
+                max_workers=workers_count,
+                initializer=_init_worker,
+                initargs=(UI_LANG_DICT,)
+            ) as executor:
+                # 🛡️ 改用 as_completed 模式，達成真正的單檔例外隔離
+                future_to_task = {
+                    executor.submit(MDEngine._worker_stream_update_single, task_item): task_item
+                    for task_item in tasks
+                }
+
+                for future in concurrent.futures.as_completed(future_to_task):
                     count += 1
-                    success += res
-                    if err: errors.append(err)
-                    if progress_cb and count % 5 == 0: progress_cb(count)
-                    
+                    if progress_cb and count % 5 == 0:
+                        progress_cb(count)
+
+                    try:
+                        res, err_msg = future.result()
+                        success += res
+                        if err_msg:
+                            errors.append(err_msg)
+                    except Exception as child_process_err:
+                        # 即使個別子行程發生底層未預期崩潰，也不中斷其餘檔案的處理
+                        failed_task = future_to_task[future]
+                        failed_filename = failed_task[1]
+                        errors.append(_("[{file_name}] 子行程執行異常: {error}").format(
+                            file_name=failed_filename,
+                            error=str(child_process_err)
+                        ))
+
+            # 寫入錯誤報告（若有）
             if errors:
                 os.makedirs(out_base, exist_ok=True)
-                with open(os.path.join(out_base, "stream_update_error.log"), "w", encoding="utf-8") as f:
-                    f.write("\n".join(errors))
-                    
+                error_log_path = os.path.join(out_base, "stream_update_error.log")
+                with open(error_log_path, "w", encoding="utf-8") as f_log:
+                    f_log.write("\n".join(errors))
+
             finish_cb(True, success, out_base)
-        except Exception as e: 
-            finish_cb(False, str(e), traceback.format_exc())
+
+        except Exception as main_err:
+            finish_cb(False, str(main_err), traceback.format_exc())
 
     @staticmethod
     def get_data_unity3d_safe(game_0000):
         """智慧反推 data.unity3d 的實體路徑"""
+        if not game_0000: return ""
         norm = os.path.normpath(game_0000)
+        if os.path.basename(norm).lower() == "data.unity3d": return norm
+        if os.path.basename(norm).lower() == "masterduel_data": return os.path.join(norm, "data.unity3d")
         parts = norm.split(os.sep)
+        md_idx = next((i for i, p in enumerate(parts) if p.lower() == "masterduel_data"), -1)
+        if md_idx != -1: return os.path.join(os.sep.join(parts[:md_idx + 1]), "data.unity3d")
         ld_idx = next((i for i, p in enumerate(parts) if p.lower() == "localdata"), -1)
         if ld_idx != -1: return os.path.join(os.sep.join(parts[:ld_idx]), "masterduel_Data", "data.unity3d")
         return os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(norm))), "masterduel_Data", "data.unity3d")
@@ -4143,12 +4454,13 @@ class MDEngine:
     @staticmethod
     def get_sa_dir_safe(game_0000):
         """🛡️ 智慧反推 StreamingAssets/AssetBundle 的實體路徑"""
+        if not game_0000: return ""
         norm = os.path.normpath(game_0000)
         parts = norm.split(os.sep)
+        md_idx = next((i for i, p in enumerate(parts) if p.lower() == "masterduel_data"), -1)
+        if md_idx != -1: return os.path.join(os.sep.join(parts[:md_idx + 1]), "StreamingAssets", "AssetBundle")
         ld_idx = next((i for i, p in enumerate(parts) if p.lower() == "localdata"), -1)
-        if ld_idx != -1:
-            return os.path.join(os.sep.join(parts[:ld_idx]), "masterduel_Data", "StreamingAssets", "AssetBundle")
-        # 降級備用：如果找不到 LocalData，直接往上推三層尋找
+        if ld_idx != -1: return os.path.join(os.sep.join(parts[:ld_idx]), "masterduel_Data", "StreamingAssets", "AssetBundle")
         return os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(norm))), "masterduel_Data", "StreamingAssets", "AssetBundle")
 
     @staticmethod
@@ -4256,18 +4568,19 @@ class MDEngine:
 
     @staticmethod
     def task_direct_replace(target_file_path, target_texture_name, out_root, img_path, overwrite, backup_folder, out_folder, progress_cb, finish_cb):
-        """裸檔流向引擎：專門處理 data.unity3d 等不需要深層目錄結構的單一大檔"""
+        """裸檔流向引擎：專門處理 data.unity3d 等大檔，具備純淨備份與歷史紀錄能力"""
         try:
             if not os.path.exists(target_file_path):
                 return finish_cb(False, _("找不到目標檔案：\n{path}").format(path=target_file_path), None)
             
-            # 裸檔備份設定 (不建立 0000 等子目錄)
+            file_name = os.path.basename(target_file_path)
+            
+            # 🛡️ 規範化路徑：徹底貫徹裸檔輸出原則，不再建立 masterduel_Data 子目錄
             tgt_backup = os.path.join(out_root, backup_folder or "文件備份")
             tgt_modded = os.path.join(out_root, out_folder or "改完的文件")
             os.makedirs(tgt_backup, exist_ok=True)
             os.makedirs(tgt_modded, exist_ok=True)
             
-            file_name = os.path.basename(target_file_path)
             backup_file = os.path.join(tgt_backup, file_name)
             modded_file = os.path.join(tgt_modded, file_name)
             
@@ -4285,8 +4598,36 @@ class MDEngine:
                     MDEngine.safe_write_bytes(modded_file, env.file.save()) # 🛡️ 套用原子化寫入
                     import gc
                     gc.collect() 
+                    
                     if overwrite: 
                         MDEngine.safe_copy_file(modded_file, target_file_path) # 🛡️ 套用原子化覆寫
+                        
+                    # --- 核心歷史紀錄同步寫入 (防孤島化) ---
+                    if is_data_unity3d:
+                        workspace_dir = os.path.join(MDEngine.TEMP_DIR, "data_unity3d_workspace")
+                        os.makedirs(workspace_dir, exist_ok=True)
+                        manifest_path = os.path.join(workspace_dir, "data_mod_manifest.json")
+                        pristine_path = os.path.join(workspace_dir, "data.unity3d.pristine")
+                        
+                        if not os.path.exists(pristine_path):
+                            MDEngine.safe_copy_file(backup_file, pristine_path)
+                            
+                        manifest = {"pristine": {}, "last_injected": {}, "registered_mods": {}}
+                        if os.path.exists(manifest_path):
+                            try:
+                                with open(manifest_path, "r", encoding="utf-8") as f:
+                                    manifest = json.load(f)
+                            except Exception: pass
+                            
+                        manifest.setdefault("registered_mods", {})[target_texture_name] = {"source_path": img_path, "type": "Texture2D"}
+                        manifest["last_injected"] = {"size": os.path.getsize(modded_file), "mtime": os.path.getmtime(modded_file)}
+                        
+                        if not manifest.get("pristine") or not manifest["pristine"].get("size"):
+                            manifest["pristine"] = {"size": os.path.getsize(pristine_path), "mtime": os.path.getmtime(pristine_path)}
+                            
+                        with open(manifest_path, "w", encoding="utf-8") as f:
+                            json.dump(manifest, f, indent=4, ensure_ascii=False)
+                            
                     finish_cb(True, 1, None)
                 else:
                     finish_cb(False, _("在檔案中找不到目標貼圖：{name}").format(name=target_texture_name), None)
@@ -4316,6 +4657,7 @@ class MDEngine:
         state_log = {}
         try:
             game_sa = MDEngine.get_sa_dir_safe(game_0000)
+            game_md_data = os.path.dirname(MDEngine.get_data_unity3d_safe(game_0000)) if MDEngine.get_data_unity3d_safe(game_0000) else ""
             link_map = {}
             def scan_files(src_folder, dest_root, base_mod_name):
                 for root, dummy_dirs, files in os.walk(src_folder):
@@ -4342,6 +4684,7 @@ class MDEngine:
                     
                     if name_lower == "0000": scan_files(path, game_0000, base_mod_dir)
                     elif name_lower == "streamingassets" or name_lower == "assetbundle": scan_files(path, game_sa, base_mod_dir)
+                    elif name_lower == "masterduel_data" and game_md_data: scan_files(path, game_md_data, base_mod_dir)
                     else: smart_scan(base_mod_dir, path, current_depth + 1)
 
             for mod_name in reversed(active_mods):
@@ -4869,6 +5212,163 @@ class MDEngine:
             except Exception: pass
         return records, conflicts
 
+    @staticmethod
+    def task_batch_replace_data_unity3d(target_dir, mod_dir, csv_path, out_root, out_folder, progress_cb, finish_cb):
+        """核心資產記憶體單次批次注入引擎與三態防護機制 (修復版)"""
+        env = None
+        try:
+            workspace_dir = os.path.join(MDEngine.TEMP_DIR, "data_unity3d_workspace")
+            os.makedirs(workspace_dir, exist_ok=True)
+            manifest_path = os.path.join(workspace_dir, "data_mod_manifest.json")
+            pristine_path = os.path.join(workspace_dir, "data.unity3d.pristine")
+            
+            game_file = MDEngine.get_data_unity3d_safe(target_dir)
+            if not os.path.exists(game_file):
+                return finish_cb(False, _("找不到遊戲的 data.unity3d 檔案！\n路徑：{path}").format(path=game_file), None)
+            
+            mapping, dummy_db = MDEngine.get_csv_data(csv_path)
+            data_assets_mapping = {k: v for k, v in mapping.items() if any(item['folder'] == "data.unity3d" for item in v)}
+            
+            curr_size = os.path.getsize(game_file)
+            curr_mtime = os.path.getmtime(game_file)
+            manifest = {"pristine": {}, "last_injected": {}, "registered_mods": {}}
+            is_game_updated = False
+            
+            if os.path.exists(manifest_path):
+                try:
+                    with open(manifest_path, "r", encoding="utf-8") as f:
+                        manifest = json.load(f)
+                except Exception: pass
+                
+                last_inj = manifest.get("last_injected", {})
+                is_currently_modded = (last_inj.get("size") == curr_size and abs(last_inj.get("mtime", 0) - curr_mtime) < 1.0)
+                p_info = manifest.get("pristine", {})
+                is_pristine = (p_info.get("size") == curr_size and abs(p_info.get("mtime", 0) - curr_mtime) < 1.0)
+                
+                if not is_currently_modded and not is_pristine and p_info:
+                    is_game_updated = True
+                    
+            if not os.path.exists(pristine_path) or is_game_updated:
+                MDEngine.safe_copy_file(game_file, pristine_path)
+                manifest["pristine"] = {"size": os.path.getsize(pristine_path), "mtime": os.path.getmtime(pristine_path)}
+            
+            tasks = {}
+            # 🛡️ 修正：先載入歷史註冊任務，達成 O(1) 疊加更新與官方大更新保底
+            for k, v in manifest.get("registered_mods", {}).items():
+                src_path = v.get("source_path", "")
+                if os.path.exists(src_path): tasks[k] = src_path
+                
+            # 🛡️ 修正：防護資料夾不存在的崩潰，並讀取新改圖任務覆蓋舊有歷史
+            if os.path.exists(mod_dir):
+                for img_name in os.listdir(mod_dir):
+                    if not img_name.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp')): continue
+                    base_id = MDEngine.find_longest_prefix(img_name, list(data_assets_mapping.keys()))
+                    if base_id in data_assets_mapping:
+                        tasks[base_id] = os.path.join(mod_dir, img_name)
+                    
+            if not tasks:
+                # 🛡️ 修正：沒有任務時屬於「正常無動作」，應回傳 True，避免連鎖流程被誤判為崩潰中斷
+                return finish_cb(True, 0, None)
+
+            if progress_cb: progress_cb(10)
+            
+            env = UnityPy.load(pristine_path)
+            modded_count = 0
+            
+            path_to_container = {obj.path_id: str(c_path) for c_path, obj in env.container.items()}
+            base_container_path = str(next(iter(env.container.keys()), ""))
+            tasks_norm = {MDEngine.normalize_string(k): (k, v) for k, v in tasks.items()}
+            
+            for obj in env.objects:
+                if obj.type.name == "Texture2D":
+                    clean_name = ""
+                    if hasattr(obj, "peek_name"):
+                        peeked = obj.peek_name()
+                        if peeked: clean_name = str(peeked)
+                    clean_name = clean_name.replace('.bmp', '').replace('.png', '').strip()
+                    c_path = str(path_to_container.get(obj.path_id, base_container_path))
+                    if not clean_name and c_path:
+                        clean_name = c_path.split('/')[-1].replace('.prefab', '').replace('.mat', '').replace('.bmp', '').replace('.png', '').strip()
+                        
+                    if not clean_name: continue
+                        
+                    clean_base = re.sub(r'_(l|m|s|128|256|512)$', "", clean_name, flags=re.IGNORECASE)
+                    norm_target = MDEngine.normalize_string(clean_name)
+                    norm_base = MDEngine.normalize_string(clean_base)
+                    
+                    matched_item = tasks_norm.get(norm_target) or tasks_norm.get(norm_base)
+                        
+                    if matched_item:
+                        orig_key, img_path = matched_item
+                        try:
+                            data = obj.read()
+                            with Image.open(img_path) as mod_img:
+                                mod_img = mod_img.convert("RGBA")
+                                options = {"target_size": (data.image.width, data.image.height)}
+                                strategy = "MODE_FIT_VISUAL" if MDEngine.is_visual_asset(orig_key) else "NONE"
+                                mod_img = MDEngine.process_texture_image(mod_img, orig_key, {}, strategy, options)
+                                data.image = mod_img
+                                data.save()
+                                modded_count += 1
+                                
+                                manifest.setdefault("registered_mods", {})[orig_key] = {"source_path": img_path, "type": "Texture2D"}
+                        except Exception: pass
+                        
+            if modded_count > 0:
+                if progress_cb: progress_cb(80)
+                MDEngine.safe_write_bytes(game_file, env.file.save())
+                
+                manifest["last_injected"] = {"size": os.path.getsize(game_file), "mtime": os.path.getmtime(game_file)}
+                
+                # 🛡️ 修正：解耦輸出資料夾，貫徹裸檔輸出原則，移除 "masterduel_Data"
+                out_dir = os.path.join(out_root, out_folder)
+                os.makedirs(out_dir, exist_ok=True)
+                MDEngine.safe_copy_file(game_file, os.path.join(out_dir, "data.unity3d"))
+                
+                with open(manifest_path, "w", encoding="utf-8") as f:
+                    json.dump(manifest, f, indent=4, ensure_ascii=False)
+                    
+                finish_cb(True, modded_count, None)
+            else:
+                finish_cb(False, _("未能在檔案中成功注入任何圖片。"), None)
+                
+        except PermissionError: finish_cb(False, _("寫入失敗！data.unity3d 可能正被遊戲佔用，請關閉遊戲後再試。"), None)
+        except Exception as e:
+            import traceback
+            finish_cb(False, str(e), traceback.format_exc())
+        finally:
+            if env: del env
+
+    @staticmethod
+    def task_restore_data_unity3d_pristine(target_dir, progress_cb, finish_cb):
+        """還原純淨原檔"""
+        try:
+            workspace_dir = os.path.join(MDEngine.TEMP_DIR, "data_unity3d_workspace")
+            pristine_path = os.path.join(workspace_dir, "data.unity3d.pristine")
+            game_file = MDEngine.get_data_unity3d_safe(target_dir)
+            
+            if not os.path.exists(pristine_path):
+                return finish_cb(False, _("找不到純淨備份檔 (data.unity3d.pristine)。您可能尚未進行過任何修改。"), None)
+            if not os.path.exists(game_file):
+                return finish_cb(False, _("找不到遊戲的 data.unity3d 檔案！\n路徑：{path}").format(path=game_file), None)
+                
+            MDEngine.safe_copy_file(pristine_path, game_file)
+            
+            manifest_path = os.path.join(workspace_dir, "data_mod_manifest.json")
+            if os.path.exists(manifest_path):
+                try:
+                    with open(manifest_path, "r", encoding="utf-8") as f: man = json.load(f)
+                    man["registered_mods"] = {}
+                    man["last_injected"] = {}
+                    with open(manifest_path, "w", encoding="utf-8") as f: json.dump(man, f, indent=4, ensure_ascii=False)
+                except Exception: pass
+                
+            finish_cb(True, 1, None)
+        except PermissionError: finish_cb(False, _("還原失敗！data.unity3d 可能正被遊戲佔用，請關閉遊戲後再試。"), None)
+        except Exception as e:
+            import traceback
+            finish_cb(False, str(e), traceback.format_exc())
+
 # =========================================================================
 # ==================== 第四區：真・模組化 UI 分頁 ===========================
 # =========================================================================
@@ -5105,6 +5605,26 @@ class BaseTab(QWidget):
         if form_layout is not None: form_layout.addRow(cb)
         return cb
 
+    def validate_paths(self, requirements):
+        """
+        統一的路徑實體檢查器 (遵循 DRY 與去耦合原則)
+        requirements 格式: [("dir", path_str, _("顯示名稱")), ("file", path_str, _("顯示名稱"))]
+        """
+        for req_type, raw_path, name in requirements:
+            p = clean_path(raw_path) if raw_path is not None else ""
+            if p == "None":
+                p = ""
+            if not p:
+                QMessageBox.critical(self, _("路徑缺失"), _("請先設定【{name}】的路徑！").format(name=name))
+                return False
+            if req_type == "dir" and not os.path.isdir(p):
+                QMessageBox.critical(self, _("路徑錯誤"), _("【{name}】資料夾不存在或無效：\n{path}").format(name=name, path=p))
+                return False
+            if req_type == "file" and not os.path.isfile(p):
+                QMessageBox.critical(self, _("路徑錯誤"), _("【{name}】檔案不存在或無效：\n{path}").format(name=name, path=p))
+                return False
+        return True
+
 class SearchFilterSignals(QObject):
     search_requested = Signal(dict)
     page_display_updated = Signal(list) # ✨ 新增：0ms 切片更新訊號
@@ -5272,36 +5792,48 @@ class GoogleSearchFilterWidget(QWidget):
             
         self.edit_inc.textChanged.connect(lambda dummy_text: self.update_badge_and_state())
         self.edit_exc.textChanged.connect(lambda dummy_text: self.update_badge_and_state())
-        self.cb_page_limit.currentTextChanged.connect(lambda dummy_text: self.update_badge_and_state())
+        self.cb_page_limit.currentIndexChanged.connect(lambda dummy_idx: self.update_badge_and_state())
+        self.cb_page_limit.lineEdit().editingFinished.connect(self.update_badge_and_state)
 
     def _get_current_limit(self):
         """
-        DRY 核心解析器：支援真・多語系解耦與自訂數值防禦
+        DRY 核心解析器：完全拔除語系硬比對，優先尊重手動輸入
         """
-        # 1. 優先判定：是否選取了下拉選項（透過 itemData 綁定的整數值）
-        data_val = self.cb_page_limit.currentData()
         current_text = self.cb_page_limit.currentText().strip()
-        current_idx = self.cb_page_limit.currentIndex()
-        
-        if isinstance(data_val, int) and data_val > 0:
-            # 確保目前輸入框文字確實等於該項目的顯示文字（防止使用者手動輸入其他字但 index 未變）
-            if current_idx >= 0 and current_text == self.cb_page_limit.itemText(current_idx).strip():
-                return data_val
 
-        # 2. 多語系防線：若文字與翻譯標籤完全相符（或預設繁中/英文）
-        if current_text in (_("全部 (All)"), "全部 (All)", "All", "全部"):
-            return 999999
-
-        # 3. 使用者手動輸入純數字（強制至少為 1，100% 杜絕 ZeroDivisionError）
+        # 1. 使用者手動輸入純數字 (優先權最高，防零除)
         if current_text.isdigit():
             return max(1, int(current_text))
 
-        # 4. 防呆預設值
+        # 2. 嘗試獲取下拉選單綁定的底層資料
+        data_val = self.cb_page_limit.currentData()
+        if isinstance(data_val, int) and data_val > 0:
+            return data_val
+
+        # 3. 預設防呆保底
         return 200
 
     def _on_lang_changed(self, text):
         self.config.set("search_lang", text.strip().lower())
         self.trigger_search()
+
+    def sync_lang_ui(self, new_lang):
+        """✨ 接收跨分頁同步，阻斷本身訊號避免引發無效的重複檢索"""
+        if self.cb_lang.currentText().strip().lower() != new_lang:
+            self.cb_lang.blockSignals(True)
+            self.cb_lang.setCurrentText(new_lang)
+            self.cb_lang.blockSignals(False)
+
+    def is_user_actively_searching(self, params):
+        """✨ 智慧冷啟動判定：確認使用者是否真的有下達指令"""
+        if bool(params.get("query", "").strip()): return True
+        if bool(params.get("inc_words", "").strip()): return True
+        if bool(params.get("exc_words", "").strip()): return True
+        filters = params.get("filters", {})
+        if filters.get("怪獸", {}).get("enabled", False): return True
+        if filters.get("魔法", {}).get("enabled", False): return True
+        if filters.get("陷阱", {}).get("enabled", False): return True
+        return False
 
     def toggle_filter_panel(self):
         self.panel_filter.setVisible(self.btn_toggle_filter.isChecked())
@@ -5393,7 +5925,8 @@ class GoogleSearchFilterWidget(QWidget):
         self.signals.search_requested.emit(self.get_search_params())
 
     def update_pagination_ui(self, all_matches_data, limit_per_page):
-        self.all_matches = all_matches_data
+        # 🛡️ 型別守門防線：如果傳入的不是 list，強制以空清單保底，阻斷 Shiboken 崩潰
+        self.all_matches = all_matches_data if isinstance(all_matches_data, list) else []
         self.current_page = 1 # 重新搜尋後強制作為第一頁
         total_hits = len(self.all_matches)
         
@@ -5450,60 +5983,139 @@ class GoogleSearchFilterWidget(QWidget):
 class TabGuide(BaseTab):
     def __init__(self, main_app):
         super().__init__(main_app)
-        self.layout.addWidget(QLabel(_("📖 Master Duel 資源改造指南")))
         
-        desc = QLabel(_("歡迎使用本工具，本工具為免費工具。本工具不僅能修改卡圖，只要是遊戲中的卡套、場地、頭像、背景等所有 2D 貼圖資源，只要屬於 Texture2D 類別，皆能替換。"))
-        desc.setWordWrap(True)
-        self.layout.addWidget(desc)
+        lbl_title = QLabel(_("📖 Master Duel 資源改造指南與系統架構知識庫"))
+        lbl_title.setStyleSheet("font-size: 18px; font-weight: bold; color: #2CC985; margin-bottom: 10px;")
+        self.layout.addWidget(lbl_title)
         
-        text_guide = QPlainTextEdit()
-        text_guide.setReadOnly(True)
-        text_guide.setPlainText(
-            _("📋 【全分頁功能指引說明書】\n\n"
-              "【最高指導原則】：把路徑貼上然後按執行\n\n"
-              "🛠️ 1~5 步：標準批次修改專案（適合多檔案或大型模組包製作）\n"
-              "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-              "【1. 爆搜與補齊】：掃描遊戲 0000 檔案，生成亂碼檔名（Hash）與卡片真實名稱的對照表（CSV 字典）。\n"
-              "也可利用此功能快速提取模組檔案的卡片編號txt檔案\n\n"
-              "【2. 找出檔案】：借助對照表搜尋卡片，並將對應的遊戲檔案複製出來集中管理。\n"
-              "可以智慧讀取上一頁生成的txt檔案，並且可以切換為快速遊戲原檔轉超框功能(點擊選擇模式切換)\n"
-              "想要把自己的模組超框話請使用靈擺與超框卡圖後處理\n"
-              "以防你不知道，點擊右鍵也可以移動選取的項目\n"
-              "視覺化篩選可以讓你用圖片的方式檢查有沒有挑錯圖\n\n"
-              "【3. 提取資料】：提取出檔案中的2D紋理，並留下原始備份。\n"
-              "你可以順帶生成csv(從母csv中複製出來的)\n"
-              "你可能會注意到為什麼好像有兩個備份功能的資料夾，問就是有意為之\n\n"
-              "【4. 更改卡圖】：將你在「卡圖改(你可以改名)」中修改好的圖片裝到卡片檔案中。\n"
-              "卡圖命名請保留[編號前綴與底線]後面隨便你取什麼都可以。\n"
-              "例如這樣 \"12345_這裡取什麼名字隨便你.png\"\n\n"
-              "【5. 封裝模組】：自動將改完的加密檔整理成符合官方路徑的資料夾結構，以便套用或分享給他人。\n"
-              "打包你的檔案!\n\n\n"
-              "⚡ 進階效能與自動化調度\n"
-              "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-              "【6. 智慧串連執行】：一鍵自動連鎖執行上述 2 至 5 的所有步驟，徹底省去手動一步步操作的時間。\n"
-              "但是你還是需要填好你的路徑\n\n\n"
-              "🎨 視覺效果與進階卡面美化\n"
-              "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-              "【7. 靈擺與超框卡圖後處理】：自動修復正方形靈擺卡圖比例 / 自動把你的卡片進行超框化的模板套用(點擊處理模式切換)\n"
-              "靈擺圖片是針對正方形卡圖的，他會在圖片下方填充透明框，防止卡圖在遊戲中變形。\n"
-              "超框化模板會自動將你的圖片並置中裁切將其變成11:16的形式\n\n"
-              "【8. 快捷單卡改圖】：免去建立專案的步驟，直接搜尋指定卡片、選擇新圖片即可一鍵替換遊戲內原檔。\n"
-              "要替換多張卡圖強烈建議去使用上半部的功能，這個功能十分受限，但很簡單\n\n"
-              "【9. 超框卡片註冊器】：修改超框卡的名單(of_card_asset)。將卡片 ID 寫入遊戲的註冊表中，使其能突破邊框限制。\n"
-              "可以從這邊跳轉去第二頁搜尋(或自動填入txt)來找到你想要的卡片\n\n"
-              "【10. 圖形化瀏覽器】：提供場地、硬幣、頭像、卡套、大廳背景等2D資產的縮圖檢視，可將 ID 直接傳送至提取清單。\n\n\n"
-              "🔧 模組維護、救援與虛擬管理\n"
-              "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-              "【11. 模組串流修復器】：當遊戲大更新導致舊模組失效時，直接將舊模組的貼圖串流移植到最新版的官方原檔中。\n"
-              "這個功能理論上能生效，但如果K社修改了檔案儲存格式的就沒得救\n\n"
-              "【12. 虛擬模組管理器】：使用系統符號連結（Symlink）技術，免安裝、免佔空間即可一鍵啟用或還原多個模組。\n"
-              "需要管理員權限才能使用此功能\n"
-              "用來測試模組非常方便\n\n"
-              "【13. 設定與外觀】：自訂程式強調色、自訂背景圖片與透明度，並可在此調整左側目錄的分頁順序與名稱。\n"
-              "大部分全域的設定值都擺在這邊了，修改完記得按儲存設定!\n"
-              "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-              "【來自作者的靈魂吶喊】：納西妲世界第一可愛!!")
-        )
+        text_guide = QTextBrowser()
+        text_guide.setOpenExternalLinks(True)
+        # 徹底解放背景，讓底層動態 RGBA 與桌布透出
+        text_guide.setStyleSheet("background: transparent; border: none;")
+        
+        # 遵循 DRY 原則，將所有教學文本以單一翻譯字串包裹，確保多語系系統正常擷取
+        html_content = _("""
+        <div style="font-family: 'Consolas', 'Microsoft JhengHei', sans-serif; line-height: 1.6; font-size: 14px; color: #EBEBEC;">
+            <p>這座工坊專為替換遊戲內 2D 資源（Texture2D）設計，涵蓋卡圖、卡套、場地、頭像、背景與召喚動畫。<br>
+            如需查閱最新版本的圖文教學或專案原始碼，請存取終端資料庫：<br>
+            <a href="https://github.com/LLKSENsei/AstellarTool-Master-Duel-Modding-Tool" style="color: #4AA4FF; font-weight: bold; text-decoration: none;">👉 [AstellarTool GitHub 官方專案倉庫]</a></p>
+
+            <hr style="border: 1px solid rgba(255,255,255,0.15); margin: 15px 0;">
+
+            <h3 style="color: #E0C030; margin-bottom: 5px;">📦 第一章：前置準備與命名編譯規則</h3>
+            <p><b>1. 準備替換素材：</b><br>
+            靜態圖片支援 PNG（推薦，保留透明通道）、JPG、BMP 等；召喚動畫支援 MP4、AVI、MOV 影片、GIF 動圖或 PSD 圖層檔案。</p>
+            
+            <p><b>2. 嚴格檔案命名法則（正規化匹配規則）：</b><br>
+            系統是由左至右讀取字串，提取出第一個分隔符號（如底線 <code>_</code>）前方的字元作為「物件 ID」。<br>
+            前綴 ID 錯誤會導致系統靜默忽略該檔案，請嚴格遵守以下範例：</p>
+            <ul style="list-style-type: square; padding-left: 20px;">
+                <li>✅ <code>12345_任意備註文字.png</code> （標準推薦格式，系統精準抓出 12345）</li>
+                <li>✅ <code>12345.png</code> （純數字 ID）</li>
+                <li>✅ <code>12345-ch.png</code> / <code>12345-bg.png</code> （進階超框雙圖層專用：角色層與背景層）</li>
+                <li>✅ <code>p18532_動畫備註.mp4</code> （召喚動畫專用：必須是小寫 <code>p</code> 開頭接數字）</li>
+                <li>✅ <code>ShopBGBase02_大廳.png</code> （系統大檔資產：必須完整保留原廠代碼）</li>
+            </ul>
+            <p style="color: #D83C3C;">❌ <b>錯誤示範（將導致匹配失敗）：</b><br>
+            <code>青眼白龍_12345.png</code>（ID 被放置於後方）、<code>12345卡圖.png</code>（缺乏分隔字元）。</p>
+
+            <hr style="border: 1px solid rgba(255,255,255,0.15); margin: 15px 0;">
+
+            <h3 style="color: #FF5A9B; margin-bottom: 5px;">🗄️ 第二章：實體檔案拓撲與資料夾生命週期</h3>
+            <p>為了避免覆蓋錯誤，請清楚區分以下三大目錄結構。請特別注意 <b style="color:#2CC985;">【★ 卡圖改】</b>，這是你唯一需要手動放入新素材的地方！</p>
+            
+            <h4 style="color: #4AA4FF; margin-bottom: 2px;">1. 你的「專案工作資料夾」(本工具設定中的"儲存根目錄")</h4>
+            <pre style="background-color: rgba(0,0,0,0.45); padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); color: #EBEBEC; font-family: 'Consolas', monospace;">
+D:\\MD_Mod_Work\\              ← 【專案根目錄】(強烈建議在你容量大的硬碟獨立建立)
+ │
+ ├── 原檔\\                    [分頁2 自動提取] 從遊戲抓出來的未修改原始 Bundle
+ ├── 原卡圖\\                  [分頁3 自動解包] 提取出來的原版純圖片 (PNG)，供你作畫參考
+ ├── 文件備份\\                [分頁3 自動備份] 原始 Bundle 的純淨副本 (日後還原/打包發布必備)
+ │
+ ├── <b style="color:#2CC985;">★ 卡圖改\\               [⭐ 玩家放材料的核心所在地！]</b>
+ │    │                      (分頁3可自動建資料夾，但新圖片要由你親手放進來！)
+ │    ├── 12345_我的青眼.png  ← 放入你改好的新卡圖
+ │    ├── 12345-ch.png       ← [進階超框] 頂層角色層 (可選)
+ │    ├── 12345-bg.png       ← [進階超框] 底層背景層 (可選)
+ │    ├── p18532_召喚.mp4    ← [召喚動畫] 動畫影片或 PSD (可選)
+ │    └── 修改前原檔\\         [分頁7 自動備份] 執行超框或靈擺後，你放進去的原圖會備份於此
+ │
+ ├── 改完的文件\\              [分頁4 自動編譯] 將「卡圖改」的圖片注入後輸出的全新 Bundle
+ └── ModFolder\\               [分頁5 自動封裝] 最終發布包！目錄已經完全對齊官方遊戲結構，可直接分享
+            </pre>
+
+            <h4 style="color: #4AA4FF; margin-bottom: 2px; margin-top: 10px;">2. 工具主程式目錄 (MD_AstellarTool 的家)</h4>
+            <pre style="background-color: rgba(0,0,0,0.45); padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); color: #EBEBEC; font-family: 'Consolas', monospace;">
+MD_AstellarTool\               ← 【工具主程式目錄】
+ ├── MD_AstellarTool.exe (或 .py 原始碼)
+ ├── md_tool_config.json       ← [全域設定檔] 紀錄你的路徑、調色盤顏色、分頁排序
+ ├── symlink_state.json        ← [分頁12 虛擬掛載狀態檔] 紀錄目前的軟連結對應
+ │
+ ├── MD_Tool_Essential\        ← [核心資源庫] ⚠️ 絕對不能刪除！
+ │    ├── CardFrame\           ← 存放各卡種的超框 PSD 與 PNG 邊框模板 (分頁7/8依賴)
+ │    └── Languages\           ← 多語系字典 (zh-tw.json、raw.json 等)
+ │
+ └── MD_Tool_Temp\             ← [暫存快取庫] 工具運算時產生的緩衝區 (工具會自動維護)
+      ├── gallery_cache\       ← 分頁10 的圖庫縮圖快取 (可於介面一鍵清除)
+      ├── of_card_asset_backups← 分頁9/13 超框註冊表的純淨基準檔 (.pristine) 與註冊歷史
+      ├── data_unity3d_workspace← 分頁4 系統大檔的純淨備份與 Manifest 歷史
+      └── frames_cache_...\    ← 分頁7 生成動畫時的影格暫存區
+            </pre>
+
+            <h4 style="color: #4AA4FF; margin-bottom: 2px; margin-top: 10px;">3. 官方遊戲目錄 (資料泉源)</h4>
+            <pre style="background-color: rgba(0,0,0,0.45); padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); color: #EBEBEC; font-family: 'Consolas', monospace;">
+SteamLibrary/.../Yu-Gi-Oh! Master Duel/
+ ├── masterduel_Data/
+ │    ├── data.unity3d        ← [系統核心檔] 大廳背景、戰鬥 UI
+ │    └── StreamingAssets/... ← [串流封裝] 怪獸登場動畫、戰鬥場地
+ └── LocalData/[8位數玩家ID]/
+      └── 0000/               ← [卡圖總庫] 數萬個以 Hash 亂碼命名的加密資源
+            </pre>
+
+            <hr style="border: 1px solid rgba(255,255,255,0.15); margin: 15px 0;">
+
+            <h3 style="color: #2CC985; margin-bottom: 10px;">⚙️ 第三章：全分頁功能深度剖析</h3>
+            
+            <h4 style="color: #4AA4FF; margin-bottom: 2px;">【標準管線】 (分頁 1~6)</h4>
+            <ul style="margin-top: 5px;">
+                <li><b>1. 爆搜與補齊</b>：遍歷遊戲檔案，破解加密並生成「Hash 亂碼 ↔ 卡片 ID/名稱」的 CSV 字典檔。</li>
+                <li><b>2. 找出檔案</b>：讀取提取清單（支援視覺化篩選），將目標檔案從 0000 目錄複製到專案【原檔】區。</li>
+                <li><b>3. 提取資料</b>：解開 Bundle，匯出【原卡圖】，並保留原始【文件備份】。</li>
+                <li><b>4. 更改卡圖</b>：將【卡圖改】內的新圖注入至 Bundle，輸出至【改完的文件】。</li>
+                <li><b>5. 封裝模組</b>：自動依照官方路徑規範，建立子目錄結構並壓縮為 ZIP。</li>
+                <li><b>6. 智慧串連執行</b>：一鍵依序自動執行步驟 2 至 5。</li>
+            </ul>
+
+            <h4 style="color: #FF5A9B; margin-bottom: 2px;">【核心靈魂引擎】進階卡面突破與極限特效 (分頁 7, 8, 9)</h4>
+            <ul style="margin-top: 5px;">
+                <li><b style="color: #FF5A9B;">7. 靈擺與超框卡圖後處理（數位影像處理中心）</b>：
+                    <br>- <b>靈擺處理</b>：自動填充透明像素，防止遊戲拉伸變形。
+                    <br>- <b>超框立體處理</b>：套用 11:16 模板，支援 <code>-ch</code> (角色) 與 <code>-bg</code> (背景) 雙層交集挖空，完美解決鑽卡特效穿透人物的問題。
+                    <br>- <b>Spine 召喚動畫生成</b>：支援綠幕去背，將影片/PSD 打包為圖集（Atlas），並自動計算 POP UP 縮放轉譯為 Spine 骨骼。
+                </li>
+                <li><b style="color: #FF5A9B;">8. 快捷單卡改圖（免專案直達快線）</b>：
+                    <br>跳過建檔流程，輸入 ID 與圖片即可原地注入。支援與分頁 7 及分頁 9 形成<b>黃金閉環</b>（處理超框 ➔ 注入 ➔ 白名單註冊）。
+                </li>
+                <li><b style="color: #FF5A9B;">9. 超框卡片註冊器（二進位白名單編輯器）</b>：
+                    <br><b>決定超框卡圖是否生效的絕對關鍵！</b>若未在此將卡片 ID 寫入 <code>of_card_asset</code> 白名單，11:16 卡圖將被嚴重擠壓變形。
+                </li>
+            </ul>
+
+            <h4 style="color: #4AA4FF; margin-bottom: 2px;">【探索、維護與管理】 (分頁 10~13)</h4>
+            <ul style="margin-top: 5px;">
+                <li><b>10. 圖形化瀏覽器</b>：無視亂碼，以縮圖檢視場地、卡套、頭像等視覺資產。</li>
+                <li><b>11. 模組串流修復器</b>：官方大更新導致舊模組破圖時，強制將舊貼圖移植到新版原檔中。</li>
+                <li><b>12. 虛擬模組管理器</b>：基於系統軟連結（Symlink）技術。免搬移檔案，零延遲掛載與卸載（需管理員權限）。</li>
+                <li><b>13. 設定與外觀</b>：全域控制中心。自訂 UI 顏色、背景透明度與左側分頁排序。</li>
+            </ul>
+
+            <hr style="border: 1px solid rgba(255,255,255,0.15); margin: 15px 0;">
+            <p style="text-align: center; color: #EBEBEC; font-style: italic; margin-top: 20px;">
+                納西妲世界第一可愛!!
+            </p>
+        </div>
+        """)
+        text_guide.setHtml(html_content)
         self.layout.addWidget(text_guide)
 
 # ==================== 分頁 1: 爆搜與補齊 ====================
@@ -5604,8 +6216,12 @@ class TabScan(BaseTab):
 
     def run_task(self):
         c = self.config
-        if not os.path.isdir(clean_path(c.get("t1_target_dir"))):
-            return QMessageBox.critical(self, _("錯誤"), _("目標資料夾不存在！請確認路徑。"))
+        # 🛡️ 變更：將儲存根目錄改為僅檢查是否有填寫 ("path")，因為它會由程式自動建立
+        if not self.validate_paths([
+            ("dir", c.get("t1_target_dir"), _("目標資料夾 (0000)")),
+            ("path", c.get("t1_out_dir"), _("儲存根目錄"))
+        ]):
+            return
             
         import multiprocessing
         self._scan_manager = multiprocessing.Manager()
@@ -5668,8 +6284,11 @@ class TabScan(BaseTab):
 
     def run_enrich(self):
         c = self.config
-        if not os.path.isfile(clean_path(self.config.get("t1_incomplete_csv"))):
-            return QMessageBox.critical(self, _("錯誤"), _("請先選擇有效的待擴充 CSV 檔案！"))
+        if not self.validate_paths([
+            ("dir", c.get("t1_target_dir"), _("目標資料夾 (0000)")),
+            ("file", c.get("t1_incomplete_csv"), _("待擴充的 CSV"))
+        ]):
+            return
             
         import multiprocessing
         self._scan_manager = multiprocessing.Manager()
@@ -5764,8 +6383,8 @@ class TabFind(BaseTab):
         self.search_widget = GoogleSearchFilterWidget(self.config, enable_batch_add=True)
         self.search_widget.signals.search_requested.connect(self.execute_advanced_search)
         self.search_widget.signals.page_display_updated.connect(self.update_list_display)
-        self.search_widget.signals.add_current_page_requested.connect(lambda page_list: self.append_to_extraction_list("\n".join(page_list)))
-        self.search_widget.signals.add_all_results_requested.connect(lambda all_list: self.append_to_extraction_list("\n".join(all_list)))
+        self.search_widget.signals.add_current_page_requested.connect(lambda page_list: self._smart_merge_extraction_list("\n".join(page_list)))
+        self.search_widget.signals.add_all_results_requested.connect(lambda all_list: self._smart_merge_extraction_list("\n".join(all_list)))
         vbox2.addWidget(self.search_widget)
         
         self.t2_list = QListWidget()
@@ -5781,14 +6400,16 @@ class TabFind(BaseTab):
             items = self.t2_list.selectedItems()
             if not items and self.t2_list.itemAt(pos):
                 items = [self.t2_list.itemAt(pos)]
-            for item in items:
-                self.t2_text.appendPlainText(item.text())
+            if items:
+                self._smart_merge_extraction_list("\n".join([i.text() for i in items]))
+                
         self.t2_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.t2_list.customContextMenuRequested.connect(batch_add_to_list)
-        self.t2_list.itemDoubleClicked.connect(lambda item: self.t2_text.appendPlainText(item.text()))
+        self.t2_list.itemDoubleClicked.connect(lambda item: self._smart_merge_extraction_list(item.text()))
         self.prevent_scroll_propagation(self.t2_list)
         
-        btn_add = QPushButton(_("▼ 加入至下方提取清單 ▼")); btn_add.clicked.connect(lambda: [self.t2_text.appendPlainText(i.text()) for i in self.t2_list.selectedItems()])
+        btn_add = QPushButton(_("▼ 加入至下方提取清單 ▼"))
+        btn_add.clicked.connect(lambda: self._smart_merge_extraction_list("\n".join([i.text() for i in self.t2_list.selectedItems()])))
         
         box_ctrl = QHBoxLayout()
         box_ctrl.addWidget(QLabel(_("欲提取的 ID (換行分隔)")))
@@ -5822,20 +6443,39 @@ class TabFind(BaseTab):
         self.layout.addWidget(self.btn_run_bottom)
 
         # 註冊監聽：當收到其他分頁傳來的追加清單指令時執行
-        self.config.signals.append_extraction_list.connect(self.handle_append_extraction)
-
-    def handle_append_extraction(self, new_text):
-        """專屬接收器：合併新文字並去重"""
-        current_text = self.t2_text.toPlainText().strip()
-        combined = (current_text + "\n" + new_text).strip()
-        self.t2_text.setPlainText(combined)
+        self.config.signals.append_extraction_list.connect(self._smart_merge_extraction_list)
+        self.config.signals.sync_search_lang.connect(self.search_widget.sync_lang_ui)
 
     def execute_advanced_search(self, params):
-        dummy_map, db = MDEngine.get_csv_data(clean_path(self.config.get("t2_csv_dir")))
-        # ✨ 接收全量清單
-        all_matches = MDEngine.search_cards_advanced(params, db, search_lang=self.config.get("search_lang", "zh-tw"))
-        # 交付給 Widget 處理切片與分頁
-        self.search_widget.update_pagination_ui(all_matches, params.get("limit_per_page", 200))
+        csv_dir = clean_path(self.config.get("t2_csv_dir"))
+        is_active = self.search_widget.is_user_actively_searching(params)
+        
+        if not csv_dir or not os.path.isfile(csv_dir):
+            self.search_widget.update_pagination_ui([], params.get("limit_per_page", 200))
+            if is_active:
+                self.app.status_lbl.setText(_("⚠️ 提示：尚未設定或找不到對照表 CSV 檔案，請先確認路徑。"))
+            else:
+                self.app.status_lbl.setText(_("狀態：等待指令..."))
+            return
+
+        # 👈 新增：即時攔截，直接截斷檢索並重置狀態
+        if not is_active:
+            self.search_widget.update_pagination_ui([], params.get("limit_per_page", 200))
+            self.app.status_lbl.setText(_("狀態：等待指令..."))
+            return
+
+        try:
+            dummy_map, db = MDEngine.get_csv_data(csv_dir)
+            all_matches = MDEngine.search_cards_advanced(params, db, search_lang=self.config.get("search_lang", "zh-tw"))
+            self.search_widget.update_pagination_ui(all_matches, params.get("limit_per_page", 200))
+            
+            if len(all_matches) > 0:
+                self.app.status_lbl.setText(_("狀態：搜尋完成，共找到 {count} 筆。").format(count=len(all_matches)))
+            else:
+                self.app.status_lbl.setText(_("狀態：找不到符合條件的卡片。"))
+        except Exception as err:
+            self.search_widget.update_pagination_ui([], params.get("limit_per_page", 200))
+            self.app.status_lbl.setText(_("⚠️ 對照表讀取失敗：{error}").format(error=str(err)))
 
     def update_list_display(self, page_slice):
         # ✨ 0ms 瞬間更新 UI
@@ -5843,11 +6483,74 @@ class TabFind(BaseTab):
         for item in page_slice:
             self.t2_list.addItem(item)
 
-    def append_to_extraction_list(self, text_to_add):
-        if not text_to_add: return
-        current_text = self.t2_text.toPlainText().strip()
-        combined = (current_text + "\n" + text_to_add).strip() if current_text else text_to_add
-        self.t2_text.setPlainText(combined) 
+    def _smart_merge_extraction_list(self, incoming_text):
+        """智慧合併清單：自動去重、保留使用者註記，並包裹為單一 Undo 交易 (Python原生陣列原位替換)"""
+        if not incoming_text: return
+        
+        existing_text = self.t2_text.toPlainText()
+        lines = existing_text.splitlines()
+        id_map = {}
+        duplicate_indices = set()
+        
+        # 階段 1：現有行索引走訪與備註解析
+        for i, line in enumerate(lines):
+            if not line.strip(): continue
+            raw_id = MDEngine.extract_id_from_line(line)
+            if not raw_id: continue # 純註解，保留原樣
+            
+            norm_id = MDEngine.normalize_string(raw_id)
+            sys_part = line.strip()
+            note_part = ""
+            
+            idx_bracket = line.rfind("]")
+            if idx_bracket != -1:
+                sys_part = line[:idx_bracket + 1].strip() # 徹底切除括號後方文字，阻斷自我複製
+                note_part = line[idx_bracket + 1:]
+            else:
+                for symbol in ["#", "//", "->"]:
+                    idx_sym = line.find(symbol)
+                    if idx_sym != -1:
+                        sys_part = line[:idx_sym].strip()
+                        note_part = "  " + line[idx_sym:].strip()
+                        break
+                        
+            if norm_id not in id_map:
+                id_map[norm_id] = {"line_idx": i, "note": note_part}
+            else:
+                duplicate_indices.add(i) # 👈 標記重複行，供後續 O(1) 剔除
+
+        # 階段 2：新行套用與原地替換
+        for in_line in incoming_text.splitlines():
+            if not in_line.strip(): continue
+            raw_id = MDEngine.extract_id_from_line(in_line)
+            if not raw_id: continue
+            
+            norm_id = MDEngine.normalize_string(raw_id)
+            if norm_id in id_map:
+                target_idx = id_map[norm_id]["line_idx"]
+                saved_note = id_map[norm_id]["note"]
+                lines[target_idx] = f"{in_line.strip()}{saved_note}" # 原位接合
+            else:
+                new_sys = in_line.strip()
+                lines.append(new_sys)
+                id_map[norm_id] = {"line_idx": len(lines) - 1, "note": ""}
+
+        # 階段 3：重組與視圖保護交易
+        final_lines = [line for idx, line in enumerate(lines) if idx not in duplicate_indices]
+        new_full_text = "\n".join(final_lines)
+        
+        if new_full_text != existing_text:
+            from PySide6.QtGui import QTextCursor
+            v_bar = self.t2_text.verticalScrollBar()
+            saved_scroll = v_bar.value() # 儲存當前捲軸數值，消除畫面震盪
+            
+            cursor = self.t2_text.textCursor()
+            cursor.beginEditBlock()
+            cursor.select(QTextCursor.SelectionType.Document)
+            cursor.insertText(new_full_text)
+            cursor.endEditBlock()
+            
+            v_bar.setValue(saved_scroll)
 
     def load_txt(self):
         try:
@@ -5860,56 +6563,56 @@ class TabFind(BaseTab):
         csv_path = clean_path(c.get("t2_csv_dir"))
         search_lang = c.get("search_lang", "zh-tw")
         
-        lookup = {}
-        # 🛡️ 安全防護結界：確保 CSV 存在且格式正確，防止無效路徑導致介面崩潰
-        if os.path.exists(csv_path):
+        lookup_dict = {}
+        if csv_path and os.path.isfile(csv_path):
             try:
-                # 遵循約定，使用 dummy_map 接收不需要的回傳值，絕不使用 _ 作為空變數
                 dummy_map, db = MDEngine.get_csv_data(csv_path)
-                
-                # 建立 ID -> (名稱, Hash) 的速查字典 (完美支援字串、副檔名與小寫校驗)
-                for card in db:
-                    header = card.get('header', [])
-                    row = card.get('full_row', [])
-                    n_idx = MDEngine.find_lang_column_index(header, search_lang, "Name")
-                    
-                    c_id = str(card.get('id', '')).strip().lower()
-                    c_hash = str(card.get('hash', '')).strip()
-                    c_name = row[n_idx] if n_idx != -1 and len(row) > n_idx else ""
-                    
-                    lookup[c_id] = (c_name, c_hash)
+                if db:
+                    for card in db:
+                        norm_cid = MDEngine.normalize_string(str(card.get('id', "")))
+                        lookup_dict[norm_cid] = card # ✨ 儲存完整卡片字典
             except Exception:
                 pass
 
-        lines = []
-        for line in self.t2_text.toPlainText().splitlines():
-            line = line.strip()
-            if not line:
-                lines.append(line)
-                continue
-                
-            # ✨ 直接從原始字串萃取 ID 
-            # (避開原本正規表示式切爛巢狀括號導致崩潰的問題)
-            card_id_str = MDEngine.extract_id_from_line(line)
+        existing_text = self.t2_text.toPlainText()
+        lines = existing_text.splitlines()
+        
+        for i, line in enumerate(lines):
+            if not line.strip(): continue
+            raw_id = MDEngine.extract_id_from_line(line)
+            if not raw_id: continue # 純註解，保留原樣
             
-            if card_id_str:
-                card_id_lower = card_id_str.lower()
-                # 🛡️ 嚴格精準比對：只比對完全相符的項目，絕對不進行純數字的模糊降級
-                if card_id_lower in lookup:
-                    c_name, c_hash = lookup[card_id_lower]
-                    
-                    # 依照有無卡名，精準拼裝出 [Hash] 碼，完美對齊搜尋清單的視覺格式
-                    if c_name:
-                        lines.append(f"{card_id_str} ({c_name}) [{c_hash}]")
-                    else:
-                        lines.append(f"{card_id_str} [{c_hash}]")
+            norm_id = MDEngine.normalize_string(raw_id)
+            if norm_id in lookup_dict:
+                # 解析舊備註 (沿用一致的使用者邊界規則)
+                note_part = ""
+                idx_bracket = line.rfind("]")
+                if idx_bracket != -1:
+                    note_part = line[idx_bracket + 1:]
                 else:
-                    # 匹配失敗：查無此項目，原封不動保留使用者輸入的原始字串
-                    lines.append(line)
-            else:
-                lines.append(line)
-                
-        self.t2_text.setPlainText("\n".join(lines))
+                    for symbol in ["#", "//", "->"]:
+                        idx_sym = line.find(symbol)
+                        if idx_sym != -1:
+                            note_part = "  " + line[idx_sym:].strip()
+                            break
+                            
+                # ✨ DRY：統一呼叫展示產生器
+                new_sys = MDEngine.format_search_item_display(lookup_dict[norm_id], search_lang)
+                lines[i] = f"{new_sys}{note_part}"
+        
+        new_full_text = "\n".join(lines)
+        if new_full_text != existing_text:
+            from PySide6.QtGui import QTextCursor
+            v_bar = self.t2_text.verticalScrollBar()
+            saved_scroll = v_bar.value()
+            
+            cursor = self.t2_text.textCursor()
+            cursor.beginEditBlock()
+            cursor.select(QTextCursor.SelectionType.Document)
+            cursor.insertText(new_full_text)
+            cursor.endEditBlock()
+            
+            v_bar.setValue(saved_scroll)
 
     def request_visual_filter(self):
         text = self.t2_text.toPlainText().strip()
@@ -5922,6 +6625,41 @@ class TabFind(BaseTab):
         # 透過 ConfigManager 廣播中介訊號，徹底解耦
         self.config.signals.request_filter_view.emit(ids)
 
+    def apply_visual_filter_result(self, id_list):
+        """從視覺化篩選返回時套用篩選結果：精準保留未刪除項目的自訂備註與格式"""
+        kept_set = {MDEngine.normalize_string(cid) for cid in id_list}
+        existing_text = self.t2_text.toPlainText()
+        lines = existing_text.splitlines()
+        
+        retained_lines = []
+        for line in lines:
+            if not line.strip():
+                continue
+            raw_id = MDEngine.extract_id_from_line(line)
+            # 純註解或無 ID 之分隔行，予以保留
+            if not raw_id:
+                retained_lines.append(line)
+            # 僅保留圖庫中未被刪除的卡片行（整行保留，含自訂備註）
+            elif MDEngine.normalize_string(raw_id) in kept_set:
+                retained_lines.append(line)
+                
+        new_text = "\n".join(retained_lines)
+        if new_text != existing_text:
+            from PySide6.QtGui import QTextCursor
+            v_bar = self.t2_text.verticalScrollBar()
+            saved_scroll = v_bar.value()
+            
+            cursor = self.t2_text.textCursor()
+            cursor.beginEditBlock()
+            cursor.select(QTextCursor.SelectionType.Document)
+            cursor.insertText(new_text)
+            cursor.endEditBlock()
+            
+            v_bar.setValue(saved_scroll)
+            
+        # 觸發一次補名，確保卡名與目前語系同步，同時保留備註
+        self.norm_txt()
+
     def run_task(self):
         # 🛡️ 完全使用邏輯代號判斷，免疫翻譯干擾
         if hasattr(self, 'cb_mode') and self.cb_mode.currentData() == "MODE_QUICK":
@@ -5931,22 +6669,39 @@ class TabFind(BaseTab):
         # 呼叫集中化萃取器
         ids = [extracted for line in self.t2_text.toPlainText().splitlines() if (extracted := MDEngine.extract_id_from_line(line))]
         
-        if not ids or not os.path.isfile(clean_path(self.config.get("t2_csv_dir"))) or not os.path.isdir(clean_path(self.config.get("t2_src_dir"))):
-            return QMessageBox.critical(self, _("錯誤"), _("請確認提取清單、CSV 字典以及來源目錄皆正確填入！"))
+        if not ids:
+            return QMessageBox.critical(self, _("錯誤"), _("提取清單為空！請先加入卡片。"))
+            
+        if not self.validate_paths([
+            ("file", self.config.get("t2_csv_dir"), _("對照表 (CSV)")),
+            ("dir", self.config.get("t2_src_dir"), _("檔案來源 (0000)")),
+            ("dir", self.config.get("t2_out_dir"), _("儲存根目錄"))
+        ]):
+            return
         folder_name = self.config.get("t2_folder_name", "").strip() or "原檔"
         out_d = os.path.join(self.config.get("t2_out_dir"), folder_name)
         # 🛡️ 傳遞 Tuple 同步控制頂部與底部按鈕！
-        self.app.execute_task((self.btn_run_top, self.btn_run_bottom), _("提取對應檔案中"), MDEngine.task_find, (self.config.get("t2_csv_dir"), self.config.get("t2_src_dir"), out_d, ids, self.config.get("enable_visual_only_filter", True)), lambda c, e: _("原檔提取完成！成功: {count} 個").format(count=c), next_tab_id="t3_extract")
+        self.app.execute_task((self.btn_run_top, self.btn_run_bottom), _("提取對應檔案中"), MDEngine.task_find, 
+            (self.config.get("t2_csv_dir"), self.config.get("t2_src_dir"), out_d, ids, self.config.get("enable_visual_only_filter", True)), 
+            lambda c, e: _("原檔提取完成！常規檔案: {count} 個\ndata.unity3d清單登錄: {extra} 個").format(count=c, extra=e), next_tab_id="t3_extract")
 
     def run_quick_overframe_chain(self):
         if not self.t2_text.toPlainText().strip(): self.load_txt()
         
         # 呼叫集中化萃取器
-        ids = [extracted for line in self.t2_text.toPlainText().splitlines() if (extracted := MDEngine.extract_id_from_line(line))]
-        
+        ids = [extracted for line in self.t2_text.toPlainText().splitlines() if (extracted := MDEngine.extract_id_from_line(line))]        
         if not ids: return QMessageBox.critical(self, _("錯誤"), _("清單為空！請先加入卡片。"))
         
         c = self.config
+        # 🛡️ 擷取同步的根目錄，供後續封裝回 Bundle 時使用
+        root_dir = clean_path(c.get("t4_root_dir")) or clean_path(c.get("t2_out_dir"))
+        
+        if not self.validate_paths([
+            ("file", c.get("t2_csv_dir"), _("對照表 (CSV)")),
+            ("dir", c.get("t2_src_dir"), _("檔案來源 (0000)")),
+            ("path", root_dir, _("專案根目錄"))
+        ]):
+            return
         
         # 🛡️ 智慧路徑解析：層層降級，優先參考全域設定，完美落實 DRY 原則
         folder_name = c.get("t2_folder_name", "").strip() or c.get("s_folder_raw", "").strip() or "原檔"
@@ -5955,8 +6710,7 @@ class TabFind(BaseTab):
         img_folder = c.get("t3_img_folder", "").strip() or c.get("s_folder_img", "").strip() or "原卡圖"
         out_img_dir = os.path.join(c.get("t2_out_dir"), img_folder)
         
-        # 🛡️ 擷取同步的根目錄，供後續封裝回 Bundle 時使用
-        root_dir = clean_path(c.get("t4_root_dir")) or clean_path(c.get("t2_out_dir"))
+        # 🛡️ 移除重複的 root_dir 宣告
         mod_folder = c.get("t4_mod_name", "").strip() or c.get("s_folder_mod", "").strip() or "卡圖改"
         mod_dir = MDEngine.resolve_path(root_dir, mod_folder)
         
@@ -5964,9 +6718,10 @@ class TabFind(BaseTab):
             if not s: return QMessageBox.critical(self, _("錯誤"), _("尋找檔案失敗: ") + str(ct))
             # 💡 修復：將 exp_backup 重新設定為 True，確實產出「文件備份」。
             # 💡 同時確保 visual_only 為 False，避免純數字 ID 被過濾掉。
+            # 🛡️ 補齊第 11 個參數 (original_src_dir)，防止引發 TypeError 導致自動化斷裂
             self.app.execute_task((self.btn_run_top, self.btn_run_bottom), _("[自動化] 提取圖片與備份中"), MDEngine.task_extract,
                 (out_raw_dir, img_folder, c.get("s_folder_backup", "").strip() or "文件備份", c.get("s_csv_mapping", "").strip() or "2DTexture_Mapping.csv",
-                 False, True, False, True, c.get("t2_csv_dir"), False), step2_extract_done, is_chain=True)
+                 False, True, False, True, c.get("t2_csv_dir"), False, clean_path(c.get("t2_src_dir"))), step2_extract_done, is_chain=True)
 
         def step2_extract_done(s, ct, e):
             if not s: return QMessageBox.critical(self, _("錯誤"), _("提取圖片失敗: ") + str(ct))
@@ -5982,40 +6737,8 @@ class TabFind(BaseTab):
             if not targets:
                 return QMessageBox.warning(self, _("警告"), _("提取後沒有找到符合 ID 的圖片。"))
             
-            full_options = {
-                "opacities": {
-                    "periframe": float(c.get("t8_op_periframe", 1.0)), "namebox": float(c.get("t8_op_namebox", 1.0)),
-                    "artframe": float(c.get("t8_op_artframe", 1.0)), "effframe": float(c.get("t8_op_effframe", 1.0)),
-                    "effbox": float(c.get("t8_op_effbox", 1.0)), "background": float(c.get("t8_op_background", 1.0))
-                },
-                "ch_x": c.get("t8_adv_ch_x", 0), "ch_y": c.get("t8_adv_ch_y", 0), "ch_s": c.get("t8_adv_ch_s", 100), "ch_rot": c.get("t8_adv_ch_rot", 0),
-                "bg_x": c.get("t8_adv_bg_x", 0), "bg_y": c.get("t8_adv_bg_y", 0), "bg_s": c.get("t8_adv_bg_s", 100), "bg_rot": c.get("t8_adv_bg_rot", 0),
-                "bg_color": c.get("t8_adv_bg_color", "#FF000000"),
-                "z_order": c.get("t8_adv_z_order", ["CH_LAYER", "PeriFrame", "NameBox", "EffFrame", "ArtFrame", "EffBox", "BackGround", "BG_LAYER"]),
-                "masks": {
-                    cat: {
-                        p: c.get(f"t8_{prefix}_{p}", d)
-                        for p, d in zip(
-                            ["PeriFrame", "NameBox", "ArtFrame", "EffFrame", "EffBox", "BackGround"],
-                            [True, False, True, True, False, False]
-                        )
-                    }
-                    for cat, prefix in [("prev", "foil_prev"), ("bake", "foil_bake"), ("dirty", "adv_mask")]
-                },
-                "foil_params": {
-                    "sim_enable": c.get("t8_adv_foil_sim", False),
-                    "bake_enable": c.get("t8_foil_bake_enable", False),
-                    "palette": c.get("t8_foil_palette", "PALETTE_OPAL"),
-                    "base_light": c.get("t8_foil_base_light", 40),
-                    "sharpness": c.get("t8_foil_sharpness", 10),
-                    "blend_mode": c.get("t8_foil_blend_mode", "BLEND_SOFT"),
-                    "intensity": c.get("t8_foil_intensity", 100),
-                    "saturation": c.get("t8_foil_saturation", 120),
-                    "frequency": c.get("t8_foil_frequency", 10.0),
-                    "angle": c.get("t8_foil_angle", 45)
-                },
-                "is_preview": False
-            }
+            full_options = TabPendulum.get_overframe_options(c)
+            full_options["is_preview"] = False
             
             bk_folder = c.get("t8_backup_folder", "").strip() or "修改前原檔"
             bk_dir_img = os.path.join(mod_dir, bk_folder)
@@ -6061,8 +6784,9 @@ class TabExtract(BaseTab):
         box.addWidget(self.bind_check("t3_exp_img", _("匯出圖片")))
         box.addWidget(self.bind_check("t3_exp_txt", _("匯出文字資料")))
         box.addWidget(self.bind_check("t3_exp_backup", _("備份檔案")))
-        form.addRow(self.bind_visual_filter())
         form.addRow(box)
+        form.addRow(self.bind_visual_filter())
+        form.addRow(self.bind_check("t3_auto_create_mod_dir", _("自動建立「卡圖改」資料夾")))
         
         self.t3_img = QLineEdit(); self.bind_text("t3_img_folder", self.t3_img)
         self.t3_img.setPlaceholderText(_("\"原卡圖\"，可依需求自訂名稱(記得去設定按儲存)"))
@@ -6073,6 +6797,15 @@ class TabExtract(BaseTab):
 
     def run_task(self):
         c = self.config
+        
+        # 🛡️ 動態檢查：只有勾選匯出 CSV 時，才強制檢查對照表是否存在
+        reqs = [("dir", c.get("t3_src_var"), _("欲提取檔案所在資料夾 (原檔)"))]
+        if c.get("t3_exp_csv"):
+            reqs.append(("file", c.get("t2_csv_dir"), _("對照表 (CSV)")))
+            
+        if not self.validate_paths(reqs):
+            return
+        
         src_dir = clean_path(c.get("t3_src_var"))
 
         # 🛡️ 危險路徑防呆：偵測是否指向遊戲 0000 總目錄
@@ -6087,12 +6820,19 @@ class TabExtract(BaseTab):
                 return
 
         def on_succ(ct, e):
+            if c.get("t3_auto_create_mod_dir", True):
+                # 🛡️ 修復：直接讀取專案根目錄，徹底解除對來源目錄相對位置的依賴，落實模組化去耦合
+                root_dir = clean_path(c.get("t2_out_dir"))
+                mod_folder = c.get("t4_mod_name", "").strip() or c.get("s_folder_mod", "").strip() or "卡圖改"
+                if root_dir:
+                    os.makedirs(os.path.join(root_dir, mod_folder), exist_ok=True)
+                
             if c.get("auto_switch_tab"):
                 csv_path = clean_path(c.get("t2_csv_dir"))
                 img_dir = os.path.join(os.path.dirname(src_dir), c.get("t3_img_folder", "原卡圖"))
                 if MDEngine.get_pendulum_list(csv_path, img_dir):
                     QTimer.singleShot(500, lambda: [
-                        self.config.signals.set_t8_mode.emit("MODE_PENDULUM"), # 🛡️ 傳遞底層邏輯代號
+                        self.config.signals.set_t8_mode.emit("MODE_PENDULUM"), 
                         self.app.select_tab("t8_pendulum"),
                         self.config.signals.request_pendulum_reload.emit()
                     ])
@@ -6100,10 +6840,9 @@ class TabExtract(BaseTab):
                     QTimer.singleShot(500, lambda: self.app.select_tab("t4_replace"))
             return _("提取完成！成功: {count} 筆").format(count=ct)
 
-        # 🛡️ 精準注入主對照表路徑給底層
         self.app.execute_task(self.btn_run, _("提取中"), MDEngine.task_extract, 
             (c.get("t3_src_var"), c.get("t3_img_folder"), c.get("s_folder_backup"), c.get("s_csv_mapping"), 
-             c.get("t3_exp_csv"), c.get("t3_exp_img"), c.get("t3_exp_txt", True), c.get("t3_exp_backup"), c.get("t2_csv_dir"), c.get("enable_visual_only_filter", True)), on_succ)
+             c.get("t3_exp_csv"), c.get("t3_exp_img"), c.get("t3_exp_txt", True), c.get("t3_exp_backup"), c.get("t2_csv_dir"), c.get("enable_visual_only_filter", True), clean_path(c.get("t2_src_dir"))), on_succ)
 
 # ==================== 分頁 4: 更改卡圖 ====================
 class TabReplace(BaseTab):
@@ -6121,6 +6860,32 @@ class TabReplace(BaseTab):
         self.t4_mod = QLineEdit(); self.bind_text("t4_mod_name", self.t4_mod); form.addRow(_("改圖位置:"), self.t4_mod)
         self.t4_mod.setPlaceholderText(_("\"卡圖改\"，可依需求自訂名稱(記得去設定按儲存)"))
         self.layout.addWidget(grp)
+
+        # 新增：核心系統資產管理專區
+        grp_data = QGroupBox(_("data.unity3d資產管理與修復"))
+        v_data = QVBoxLayout(grp_data)
+        
+        self.lbl_data_status = QLabel(_("狀態檢查中..."))
+        self.lbl_data_status.setStyleSheet("font-weight: bold;")
+        v_data.addWidget(self.lbl_data_status)
+        
+        grid_data = QGridLayout()
+        self.btn_manual_repair = QPushButton(_("🛠️ 手動修復 / 強制重新套用歷史紀錄")); self.btn_manual_repair.clicked.connect(self.run_manual_repair)
+        self.btn_manual_repair.setStyleSheet("color: #E0C030; font-weight: bold;")
+        
+        self.btn_data_restore = QPushButton(_("🔄 還原官方純淨原檔")); self.btn_data_restore.clicked.connect(self.run_data_restore)
+        self.btn_data_restore.setStyleSheet("color: #D83C3C; font-weight: bold;")
+        
+        self.btn_clear_data_history = QPushButton(_("🧹 清除data.unity3d歷史紀錄")); self.btn_clear_data_history.clicked.connect(self.clear_data_history)
+        self.btn_clear_data_history.setStyleSheet("color: #D83C3C; font-weight: bold;")
+
+        grid_data.addWidget(self.btn_manual_repair, 0, 0)
+        grid_data.addWidget(self.btn_data_restore, 0, 1)
+        grid_data.addWidget(self.btn_clear_data_history, 1, 0, 1, 2)
+        v_data.addLayout(grid_data)
+        self.layout.addWidget(grp_data)
+        
+        self.check_data_status()
         
         self.btn_run = QPushButton(_("開始替換")); self.btn_run.clicked.connect(self.run_task)
         self.layout.addWidget(self.btn_run)
@@ -6128,17 +6893,197 @@ class TabReplace(BaseTab):
     def run_task(self):
         c = self.config
         root = clean_path(c.get("t4_root_dir"))
-        if not os.path.isdir(root) or not os.path.isfile(clean_path(c.get("t4_csv_dir"))):
-            return QMessageBox.critical(self, _("錯誤"), _("根目錄或 CSV 字典路徑設定有誤！"))
-        
-        # 🛡️ 加入 .strip() or "預設名稱" 防呆，防止輸出到根目錄
         bk_dir = MDEngine.resolve_path(root, c.get("t4_backup_name", "").strip() or "文件備份")
         mod_dir = MDEngine.resolve_path(root, c.get("t4_mod_name", "").strip() or "卡圖改")
-        
-        self.app.execute_task(self.btn_run, _("圖片替換中"), MDEngine.task_replace, 
-            (c.get("t4_csv_dir"), root, bk_dir, mod_dir, c.get("s_folder_out", "").strip() or "改完的文件"), 
-            lambda ct, e: _("替換完成！產出 {count} 個檔案").format(count=ct), next_tab_id="t5_package")
 
+        if not self.validate_paths([
+            ("file", c.get("t4_csv_dir"), _("字典 (CSV) 檔案")),
+            ("path", root, _("專案根目錄位置")),
+            ("dir", bk_dir, _("備份位置 (文件備份)")),
+            ("dir", mod_dir, _("改圖位置 (卡圖改)"))
+        ]):
+            return
+
+        if not any(f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.txt', '.json', '.bytes', '.atlas')) for f in os.listdir(mod_dir)):
+            return QMessageBox.critical(self, _("錯誤"), _("「{mod_dir}」資料夾內沒有任何可替換的素材！").format(mod_dir=mod_dir))
+
+        def on_replace_done(s, ct, e):
+            if not s:
+                return QMessageBox.critical(self, _("錯誤"), _("常規檔案替換失敗：") + str(ct))
+            
+            # 🛡️ 效能與防呆屏障：預先檢查「卡圖改」內是否有屬於核心資產的素材
+            mapping_dict, dummy_db = MDEngine.get_csv_data(c.get("t4_csv_dir"))
+            data_assets_mapping = {k: v for k, v in mapping_dict.items() if any(item['folder'] == "data.unity3d" for item in v)}
+            has_core_assets = False
+            
+            if os.path.exists(mod_dir):
+                for img_name in os.listdir(mod_dir):
+                    if not img_name.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp')): continue
+                    base_id = MDEngine.find_longest_prefix(img_name, list(data_assets_mapping.keys()))
+                    if base_id in data_assets_mapping:
+                        has_core_assets = True
+                        break
+                        
+            # 若無核心資產，直接結案，不浪費 I/O 讀取大檔，也不會因為未設定 0000 目錄而誤報錯誤
+            if not has_core_assets:
+                QMessageBox.information(self, _("完成"), _("替換完成！常規檔案產出 {count} 個。").format(count=ct))
+                if c.get("auto_switch_tab"): self.app.select_tab("t5_package")
+                return
+
+            target_dir = clean_path(c.get("t2_src_dir")) or clean_path(c.get("t1_target_dir"))
+            if not target_dir:
+                return QMessageBox.critical(self, _("錯誤"), _("請先在分頁 1 或 2 設定遊戲的 0000 檔案來源路徑！"))
+                
+            out_folder = c.get("s_folder_out", "").strip() or "改完的文件"
+            
+            def on_data_done(s_d, ct_d, e_d):
+                self.check_data_status()
+                msg = _("替換完成！常規檔案產出 {count} 個。").format(count=ct)
+                if ct_d > 0:
+                    msg += _("\n並成功注入 {count} 個data.unity3d資產。").format(count=ct_d)
+                    
+                QMessageBox.information(self, _("完成"), msg)
+                if c.get("auto_switch_tab"):
+                    self.app.select_tab("t5_package")
+            
+            self.app.execute_task(self.btn_run, _("data.unity3d同步檢測中"), MDEngine.task_batch_replace_data_unity3d,
+                (target_dir, mod_dir, c.get("t4_csv_dir"), root, out_folder), on_data_done, is_chain=True)
+
+        self.app.execute_task(self.btn_run, _("常規圖片替換中"), MDEngine.task_replace, 
+            (c.get("t4_csv_dir"), root, bk_dir, mod_dir, c.get("s_folder_out", "").strip() or "改完的文件"), 
+            on_replace_done, is_chain=True)
+
+    def showEvent(self, event):
+        """✨ 每次切換回分頁時，即時刷新狀態列"""
+        super().showEvent(event)
+        self.check_data_status()
+
+    def check_data_status(self):
+        c = self.config
+        target_dir = clean_path(c.get("t2_src_dir")) or clean_path(c.get("t1_target_dir"))
+        game_file = MDEngine.get_data_unity3d_safe(target_dir) if target_dir else ""
+        
+        workspace_dir = os.path.join(MDEngine.TEMP_DIR, "data_unity3d_workspace")
+        manifest_path = os.path.join(workspace_dir, "data_mod_manifest.json")
+        
+        # 🛡️ 修正：精準區分「未設定路徑/找不到原檔」與「官方原裝純淨」
+        if not target_dir or not os.path.exists(game_file):
+            self.lbl_data_status.setText(_("⚠️ 尚未設定遊戲路徑，或找不到 data.unity3d 檔案。"))
+            self.lbl_data_status.setStyleSheet("color: #666666; font-weight: bold;")
+            return
+            
+        if not os.path.exists(manifest_path):
+            self.lbl_data_status.setText(_("✅ 官方原裝純淨 (尚未修改 data.unity3d)"))
+            self.lbl_data_status.setStyleSheet("color: #2CC985; font-weight: bold;")
+            return
+            
+        try:
+            curr_size = os.path.getsize(game_file)
+            curr_mtime = os.path.getmtime(game_file)
+            
+            with open(manifest_path, "r", encoding="utf-8") as f:
+                manifest = json.load(f)
+                
+            last_inj = manifest.get("last_injected", {})
+            is_modded = (last_inj.get("size") == curr_size and abs(last_inj.get("mtime", 0) - curr_mtime) < 1.0)
+            
+            p_info = manifest.get("pristine", {})
+            is_pristine = (p_info.get("size") == curr_size and abs(p_info.get("mtime", 0) - curr_mtime) < 1.0)
+            
+            mods_count = len(manifest.get("registered_mods", {}))
+            
+            if is_modded:
+                self.lbl_data_status.setText(_("⚡ 已套用模組 ({count} 項)。(狀態：正常運作中)").format(count=mods_count))
+                self.lbl_data_status.setStyleSheet("color: #4AA4FF; font-weight: bold;")
+            elif is_pristine:
+                self.lbl_data_status.setText(_("✅ 官方原裝純淨 (尚未套用模組)。"))
+                self.lbl_data_status.setStyleSheet("color: #2CC985; font-weight: bold;")
+            else:
+                self.lbl_data_status.setText(_("⚠️ 偵測到遊戲官方大更新！請點擊寫入按鈕，將舊模組一鍵無縫搬移至新版中。"))
+                self.lbl_data_status.setStyleSheet("color: #E0C030; font-weight: bold;")
+        except Exception:
+            self.lbl_data_status.setText(_("狀態讀取失敗。"))
+
+    def run_data_inject(self):
+        c = self.config
+        root = clean_path(c.get("t4_root_dir"))
+        mod_dir = MDEngine.resolve_path(root, c.get("t4_mod_name", "").strip() or "卡圖改")
+        target_dir = clean_path(c.get("t2_src_dir")) or clean_path(c.get("t1_target_dir"))
+        
+        if not self.validate_paths([
+            ("file", c.get("t4_csv_dir"), _("字典 (CSV) 檔案")),
+            ("dir", target_dir, _("檔案來源 (0000)")),
+            ("dir", mod_dir, _("改圖位置 (卡圖改)"))
+        ]): return
+            
+        reply = QMessageBox.question(self, _("確認寫入"), _("此操作將直接修改 data.unity3d 檔案。\n這只需要花費幾秒鐘，中途請勿強制關閉程式。\n\n確定要開始注入嗎？"), QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if reply == QMessageBox.No: return
+        
+        def on_done(ct, e):
+            self.check_data_status()
+            QMessageBox.information(self, _("完成"), _("data.unity3d資產替換成功！共注入 {count} 項。").format(count=ct))
+            
+        # 🛡️ 修正：解耦輸出資料夾，從設定讀取 "改完的文件" 名稱並傳遞給底層引擎
+        out_folder = c.get("s_folder_out", "").strip() or "改完的文件"
+            
+        self.app.execute_task(None, _("data.unity3d批次注入中"), MDEngine.task_batch_replace_data_unity3d, 
+            (target_dir, mod_dir, c.get("t4_csv_dir"), root, out_folder), on_done)
+            
+    def run_data_restore(self):
+        c = self.config
+        target_dir = clean_path(c.get("t2_src_dir")) or clean_path(c.get("t1_target_dir"))
+        if not target_dir:
+            return QMessageBox.warning(self, _("警告"), _("請先在分頁 1 或 2 設定好遊戲的 0000 資料夾路徑！"))
+            
+        reply = QMessageBox.warning(self, _("還原確認"), _("即將使用備份的純淨檔覆蓋回遊戲目錄，這將清除所有對 data.unity3d 的修改。\n\n確定要還原嗎？"), QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if reply == QMessageBox.No: return
+        
+        def on_done(ct, e):
+            self.check_data_status()
+            QMessageBox.information(self, _("完成"), _("已成功還原為官方純淨原檔！"))
+            
+        self.app.execute_task(self.btn_data_restore, _("還原官方原檔中"), MDEngine.task_restore_data_unity3d_pristine, (target_dir,), on_done)
+
+    def run_manual_repair(self):
+        c = self.config
+        target_dir = clean_path(c.get("t2_src_dir")) or clean_path(c.get("t1_target_dir"))
+        out_folder = c.get("s_folder_out", "").strip() or "改完的文件"
+        root = clean_path(c.get("t4_root_dir"))
+
+        if not self.validate_paths([("dir", target_dir, _("檔案來源 (0000)"))]): return
+            
+        reply = QMessageBox.question(self, _("手動修復"), _("此操作將讀取歷史紀錄，重新套用過去的對data.unity3d的修改至新版遊戲檔案中。\n確定要執行嗎？"), QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if reply == QMessageBox.No: return
+        
+        def on_done(s, ct, e):
+            self.check_data_status()
+            if s and ct > 0:
+                QMessageBox.information(self, _("完成"), _("手動修復成功！共還原了 {count} 項data.unity3d資產。").format(count=ct))
+            elif s and ct == 0:
+                QMessageBox.information(self, _("提示"), _("歷史紀錄為空，沒有需要修復的項目。"))
+            else:
+                QMessageBox.critical(self, _("錯誤"), str(ct))
+                
+        # 🛡️ 傳遞空的 mod_dir，讓它只讀取歷史紀錄不掃描新檔案
+        self.app.execute_task(self.btn_manual_repair, _("強制修復中"), MDEngine.task_batch_replace_data_unity3d, 
+            (target_dir, "", c.get("t4_csv_dir"), root, out_folder), on_done, is_chain=True)
+
+    def clear_data_history(self):
+        workspace_dir = os.path.join(MDEngine.TEMP_DIR, "data_unity3d_workspace")
+        manifest_path = os.path.join(workspace_dir, "data_mod_manifest.json")
+        if not os.path.exists(manifest_path):
+            return QMessageBox.information(self, _("提示"), _("目前沒有歷史紀錄！"))
+        reply = QMessageBox.question(self, _("警告"), _("確定要清除所有data.unity3d修改的歷史紀錄嗎？\n清除後將無法使用手動修復功能還原過去的修改。"), QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            try:
+                with open(manifest_path, "r", encoding="utf-8") as f: man = json.load(f)
+                man["registered_mods"] = {}
+                with open(manifest_path, "w", encoding="utf-8") as f: json.dump(man, f, indent=4, ensure_ascii=False)
+                self.check_data_status()
+                QMessageBox.information(self, _("成功"), _("歷史紀錄已清除！"))
+            except Exception as e:
+                QMessageBox.critical(self, _("錯誤"), str(e))
+        
 # ==================== 分頁 5: 封裝模組 ====================
 class TabPackage(BaseTab):
     def __init__(self, main_app):
@@ -6152,7 +7097,7 @@ class TabPackage(BaseTab):
         self.t5_mod = QLineEdit(); self.bind_text("t5_mod_folder_name", self.t5_mod); form.addRow(_("資料夾命名:"), self.t5_mod)
         self.t5_mod.setPlaceholderText(_("可依需求自訂資料夾名稱(記得去設定按儲存)"))
         box_options = QHBoxLayout()
-        box_options.addWidget(self.bind_check("t5_include_mod_folder", _("附帶「卡圖改」")))
+        box_options.addWidget(self.bind_check("t5_include_card_art", _("附帶「卡圖改」圖檔 (texture)")))
         box_options.addWidget(self.bind_check("t5_include_readme", _("附帶 ReadMe.txt")))
         box_options.addWidget(self.bind_check("t5_pack_zip", _("同時壓縮成 ZIP")))
         form.addRow(box_options)
@@ -6168,13 +7113,19 @@ class TabPackage(BaseTab):
     def run_task(self):
         c = self.config
         root = clean_path(c.get("t5_root_dir"))
+        if not self.validate_paths([
+            ("file", c.get("t5_csv_dir"), _("字典 (CSV) 檔案")),
+            ("dir", root, _("專案根目錄"))
+        ]):
+            return
+            
         mod_dir = MDEngine.resolve_path(root, c.get("t4_mod_name", "").strip() or "卡圖改")
         
         self.app.execute_task(self.btn_run, _("自動建立前綴目錄"), MDEngine.task_package, 
             (root, c.get("t5_mod_folder_name", "").strip() or "ModFolder", c.get("t5_readme_text"), mod_dir, 
              c.get("t5_pack_zip"), c.get("t5_csv_dir"), c.get("s_folder_backup", "").strip() or "文件備份", 
              c.get("s_folder_out", "").strip() or "改完的文件", c.get("t8_backup_folder", "").strip() or "修改前原檔",
-             c.get("t5_include_mod_folder"), c.get("t5_include_readme"), c.get("s_csv_mapping", "2DTexture_Mapping.csv")), 
+             c.get("t5_include_card_art"), c.get("t5_include_readme"), c.get("s_csv_mapping", "2DTexture_Mapping.csv")),
             lambda ct, e: _("打包完成！"))
 
 # ==================== 分頁 8: 靈擺與超框卡圖後處理 ====================
@@ -6432,10 +7383,32 @@ class TabPendulum(BaseTab):
         h_prev_path.addWidget(QLabel(_("測試素材:"))); h_prev_path.addWidget(self.edit_prev_path); h_prev_path.addWidget(btn_prev_browse)
         v_prev.addLayout(h_prev_path)
 
-        self.lbl_preview = QLabel(_("載入素材後將在此顯示預覽 (處理中請勿頻繁切換分頁)"))
-        self.lbl_preview.setAlignment(Qt.AlignCenter); self.lbl_preview.setMinimumHeight(400)
-        self.lbl_preview.setStyleSheet("background-color: #1A1A1A; border: 1px dashed #444; border-radius: 8px;")
-        v_prev.addWidget(self.lbl_preview)
+        # 雙段式預覽畫布佈局
+        self.preview_canvas_layout = QHBoxLayout()
+
+        # 左側：遊戲內模擬
+        self.container_game = QWidget()
+        v_game = QVBoxLayout(self.container_game)
+        lbl_game_title = QLabel(_("🎮 遊戲內模擬視圖 (In-Game Sim)"))
+        lbl_game_title.setAlignment(Qt.AlignCenter)
+        self.lbl_preview_game = QLabel(_("載入素材後將在此顯示預覽 (處理中請勿頻繁切換分頁)"))
+        self.lbl_preview_game.setAlignment(Qt.AlignCenter); self.lbl_preview_game.setMinimumHeight(400)
+        self.lbl_preview_game.setStyleSheet("background-color: #1A1A1A; border: 1px dashed #444; border-radius: 8px;")
+        v_game.addWidget(lbl_game_title); v_game.addWidget(self.lbl_preview_game)
+
+        # 右側：真實輸出圖片 (自帶透明棋盤格渲染)
+        self.container_out = QWidget()
+        v_out = QVBoxLayout(self.container_out)
+        lbl_out_title = QLabel(_("💾 實際輸出圖片 (Export PNG)"))
+        lbl_out_title.setAlignment(Qt.AlignCenter)
+        self.lbl_preview_out = QLabel()
+        self.lbl_preview_out.setAlignment(Qt.AlignCenter); self.lbl_preview_out.setMinimumHeight(400)
+        self.lbl_preview_out.setStyleSheet("background-color: #2B2B2B; border: 1px dashed #444; border-radius: 8px;")
+        v_out.addWidget(lbl_out_title); v_out.addWidget(self.lbl_preview_out)
+
+        self.preview_canvas_layout.addWidget(self.container_game)
+        self.preview_canvas_layout.addWidget(self.container_out)
+        v_prev.addLayout(self.preview_canvas_layout)
         self.chk_foil_sim = self.bind_check("t8_adv_foil_sim", _("模擬遊戲內閃卡光澤"))
         self.chk_foil_sim.setStyleSheet("color: #4AA4FF; font-weight: bold;")
         self.chk_foil_sim.toggled.connect(lambda dummy_state: self.preview_timer.start() if hasattr(self, 'preview_timer') else None)
@@ -6465,6 +7438,11 @@ class TabPendulum(BaseTab):
         self.adv_ch_y = add_dual(_("Y 軸平移:"), "t8_adv_ch_y", -2000, 2000, False, " px", form_ch)
         self.adv_ch_s = add_dual(_("縮放比例:"), "t8_adv_ch_s", 1, 500, False, " %", form_ch)
         self.adv_ch_rot = add_dual(_("旋轉角度:"), "t8_adv_ch_rot", -360, 360, False, " °", form_ch)
+        self.cb_punch_alpha = self.bind_check("t8_adv_punch_alpha", _("啟用角色超框交集挖空 (修正閃卡鑽卡圖層問題)"))
+        self.cb_punch_alpha.setStyleSheet("color: #E0C030; font-weight: bold;")
+        self.cb_punch_alpha.toggled.connect(lambda dummy: self.preview_timer.start() if hasattr(self, 'preview_timer') else None)
+        form_ch.addRow(self.cb_punch_alpha)
+        
         btn_reset_ch = QPushButton(_("🔄 重設參數"))
         btn_reset_ch.clicked.connect(lambda dummy_val=False: [self.adv_ch_x.setValue(0), self.adv_ch_y.setValue(0), self.adv_ch_s.setValue(100), self.adv_ch_rot.setValue(0)])
         form_ch.addRow(btn_reset_ch); v_adv.addWidget(grp_ch)
@@ -6716,6 +7694,16 @@ class TabPendulum(BaseTab):
         self.t8_text.setPlainText(target_filename)
         self.app.status_lbl.setText(_("狀態：已無縫接收來自快捷改圖的卡片，請調整超框參數後點擊執行。"))
 
+    def create_checkerboard_pattern(self):
+        """極簡記憶體級透明棋盤格渲染器"""
+        pixmap = QPixmap(16, 16)
+        pixmap.fill(QColor(43, 43, 43))
+        painter = QPainter(pixmap)
+        painter.fillRect(0, 0, 8, 8, QColor(68, 68, 68))
+        painter.fillRect(8, 8, 8, 8, QColor(68, 68, 68))
+        painter.end()
+        return pixmap
+
     def on_mode_changed(self, logic_id):
         """🧠 切換大腦：精準調度容器顯隱，保護主結構不塌陷"""
         is_pendulum_pad = (logic_id == "MODE_PENDULUM")
@@ -6747,6 +7735,11 @@ class TabPendulum(BaseTab):
         self.grp_c_prev.setVisible(is_cutin) # ✅ 修復：關鍵幀控制區改為動畫模式下常駐顯示
         self.grp_c_color.setVisible(is_cutin)
         self.grp_c_time.setVisible(is_cutin)
+
+        # 動態隱藏右側輸出預覽，僅超框模式獨享雙畫布
+        self.container_out.setVisible(is_overframe)
+        if not is_overframe:
+            self.lbl_preview_game.setText(_("載入素材後將在此顯示預覽 (處理中請勿頻繁切換分頁)"))
 
         # 預覽畫布只有超框與 Cut-In 模式能用
         self.btn_toggle_preview.setVisible(is_overframe or is_cutin)
@@ -6810,15 +7803,20 @@ class TabPendulum(BaseTab):
             if self.preview_widget.isVisible():
                 self.preview_timer.start()
 
-    def _get_adv_options(self):
-        c = self.config
+    @staticmethod
+    def get_overframe_options(c):
+        """DRY 核心：全域統一的超框設定獲取器"""
         return {
-            "ch_x": self.adv_ch_x.value(), "ch_y": self.adv_ch_y.value(), "ch_s": self.adv_ch_s.value(), "ch_rot": self.adv_ch_rot.value(),
-            "bg_x": self.adv_bg_x.value(), "bg_y": self.adv_bg_y.value(), "bg_s": self.adv_bg_s.value(), "bg_rot": self.adv_bg_rot.value(),
+            "opacities": {
+                "periframe": float(c.get("t8_op_periframe", 1.0)), "namebox": float(c.get("t8_op_namebox", 1.0)),
+                "artframe": float(c.get("t8_op_artframe", 1.0)), "effframe": float(c.get("t8_op_effframe", 1.0)),
+                "effbox": float(c.get("t8_op_effbox", 1.0)), "background": float(c.get("t8_op_background", 1.0))
+            },
+            "ch_x": c.get("t8_adv_ch_x", 0), "ch_y": c.get("t8_adv_ch_y", 0), "ch_s": c.get("t8_adv_ch_s", 100), "ch_rot": c.get("t8_adv_ch_rot", 0),
+            "bg_x": c.get("t8_adv_bg_x", 0), "bg_y": c.get("t8_adv_bg_y", 0), "bg_s": c.get("t8_adv_bg_s", 100), "bg_rot": c.get("t8_adv_bg_rot", 0),
             "bg_color": c.get("t8_adv_bg_color", "#FF000000"),
             "z_order": c.get("t8_adv_z_order", ["CH_LAYER", "PeriFrame", "NameBox", "EffFrame", "ArtFrame", "EffBox", "BackGround", "BG_LAYER"]),
             "masks": {
-                # 🛡️ 使用推導式大幅簡化 3x6 矩陣打包，遵循 DRY 原則
                 cat: {
                     p: c.get(f"t8_{prefix}_{p}", d)
                     for p, d in zip(
@@ -6830,15 +7828,17 @@ class TabPendulum(BaseTab):
             },
             "foil_params": {
                 "sim_enable": c.get("t8_adv_foil_sim", False),
-                "palette": self.cb_foil_palette.currentData(),
-                "base_light": self.foil_base_light.value(),
-                "sharpness": self.foil_sharpness.value(),
-                "blend_mode": self.cb_foil_blend.currentData(),
-                "intensity": self.foil_intensity.value(),
-                "saturation": self.foil_saturation.value(),
-                "frequency": self.foil_frequency.value(),
-                "angle": self.foil_angle.value()
-            }
+                "bake_enable": c.get("t8_foil_bake_enable", False),
+                "palette": c.get("t8_foil_palette", "PALETTE_OPAL"),
+                "base_light": c.get("t8_foil_base_light", 40),
+                "sharpness": c.get("t8_foil_sharpness", 10),
+                "blend_mode": c.get("t8_foil_blend_mode", "BLEND_SOFT"),
+                "intensity": c.get("t8_foil_intensity", 100),
+                "saturation": c.get("t8_foil_saturation", 120),
+                "frequency": c.get("t8_foil_frequency", 10.0),
+                "angle": c.get("t8_foil_angle", 60)
+            },
+            "adv_punch_alpha": c.get("t8_adv_punch_alpha", True)
         }
 
     def auto_load(self):
@@ -6985,6 +7985,21 @@ class TabPendulum(BaseTab):
                 mod_folder_name = c.get("s_folder_img", "").strip() or "原卡圖"
             else:
                 mod_folder_name = c.get("t8_mod_dir", "").strip() or "卡圖改"
+
+        reqs = [("dir", root_dir, _("專案根目錄"))]
+        if logic_id in ("MODE_PENDULUM", "MODE_OVERFRAME"):
+            reqs.append(("file", c.get("t8_csv_dir"), _("字典 (CSV)")))
+
+        target_work_dir = MDEngine.resolve_path(root_dir, mod_folder_name)
+        if logic_id == "MODE_PENDULUM_ORIGINAL_CROP":
+            reqs.append(("dir", target_work_dir, _("原卡圖位置")))
+        elif logic_id in ("MODE_PENDULUM", "MODE_OVERFRAME"):
+            reqs.append(("dir", target_work_dir, _("改圖位置")))
+        elif logic_id == "MODE_CUTIN":
+            reqs.append(("dir", target_work_dir, _("卡圖改位置")))
+
+        if not self.validate_paths(reqs):
+            return
                 
         # 🚀 Cut-In 動畫後處理專屬路線
         if logic_id == "MODE_CUTIN":
@@ -7034,7 +8049,7 @@ class TabPendulum(BaseTab):
 
         options = {"pad_pct": self.get_safe_int("t8_padding_pct", 25), "opacities": opacities}
         if mode_val == "overframe":
-            options.update(self._get_adv_options())
+            options.update(TabPendulum.get_overframe_options(c))
             options["is_preview"] = False
         
         def on_finish(ct, e):
@@ -7085,7 +8100,8 @@ class TabPendulum(BaseTab):
         img_path = self._resolve_cutin_preview_path(raw_input)
         
         if not os.path.isfile(img_path) and not os.path.isdir(img_path):
-            return self.lbl_preview.setText(_("請先選擇有效的圖片或素材路徑！\n(點擊上方批次清單項目可自動匯入)"))
+            self.lbl_preview_out.clear()
+            return self.lbl_preview_game.setText(_("請先選擇有效的圖片或素材路徑！\n(點擊上方批次清單項目可自動匯入)"))
 
         self._preview_running = True
         self._pending_preview = False
@@ -7094,13 +8110,13 @@ class TabPendulum(BaseTab):
         c = self.config
 
         if mode_val == "MODE_CUTIN":
-            self.lbl_preview.setText(_("⏳ 關鍵幀預覽渲染中..."))
+            self.lbl_preview_game.setText(_("⏳ 關鍵幀預覽渲染中..."))
             dummy_cid, hd_sz, opts = self._get_cutin_options()
             preview_time_sec = self.c_prev_time.value()
             
             worker = TaskWorker(MDEngine.task_generate_cutin_single_frame_preview, (img_path, hd_sz, opts, preview_time_sec))
         else:
-            self.lbl_preview.setText(_("⏳ 預覽生成中..."))
+            self.lbl_preview_game.setText(_("⏳ 預覽生成中..."))
             s_mode = "pendulum" if mode_val == "MODE_PENDULUM" else "overframe"
             opacities = {
                 "periframe": float(c.get("t8_op_periframe", 1.0)), "namebox": float(c.get("t8_op_namebox", 1.0)),
@@ -7109,7 +8125,7 @@ class TabPendulum(BaseTab):
             }
             options = {"pad_pct": self.get_safe_int("t8_padding_pct", 25), "opacities": opacities}
             if mode_val == "MODE_OVERFRAME":
-                options.update(self._get_adv_options())
+                options.update(TabPendulum.get_overframe_options(c))
                 options["is_preview"] = True
                 
             worker = TaskWorker(MDEngine.task_generate_preview, (img_path, clean_path(c.get("t8_csv_dir")), s_mode, self.get_safe_int("t8_padding_pct", 25), options))
@@ -7117,12 +8133,30 @@ class TabPendulum(BaseTab):
         if not hasattr(self.app, '_active_workers'): self.app._active_workers = set()
         self.app._active_workers.add(worker)
         
-        def on_preview_done(succ, qimg, err):
+        def on_preview_done(succ, res, err):
             self.app._active_workers.discard(worker) 
             self._preview_running = False # 🛡️ 釋放狀態鎖
             
-            if succ and qimg: self.lbl_preview.setPixmap(QPixmap.fromImage(qimg).scaledToHeight(400, Qt.SmoothTransformation))
-            else: self.lbl_preview.setText(_("❌ 預覽失敗: ") + str(err if err else qimg))
+            if succ and res:
+                if isinstance(res, tuple):
+                    # 雙段式預覽渲染
+                    qimg_game, qimg_out = res
+                    self.lbl_preview_game.setPixmap(QPixmap.fromImage(qimg_game).scaledToHeight(400, Qt.SmoothTransformation))
+                    
+                    # 繪製帶有棋盤格底圖的真實輸出影像
+                    checker = self.create_checkerboard_pattern()
+                    out_pixmap = QPixmap(qimg_out.width(), qimg_out.height())
+                    out_pixmap.fill(Qt.transparent)
+                    p = QPainter(out_pixmap)
+                    p.drawTiledPixmap(out_pixmap.rect(), checker)
+                    p.drawImage(0, 0, qimg_out)
+                    p.end()
+                    self.lbl_preview_out.setPixmap(out_pixmap.scaledToHeight(400, Qt.SmoothTransformation))
+                else:
+                    # 一般單圖預覽
+                    self.lbl_preview_game.setPixmap(QPixmap.fromImage(res).scaledToHeight(400, Qt.SmoothTransformation))
+            else: 
+                self.lbl_preview_game.setText(_("❌ 預覽失敗: ") + str(err if err else res))
             
             # 🛡️ 節流閥收尾：如果在處理期間有新的預覽請求，立刻觸發最新的一次，不浪費效能渲染中間過程
             if getattr(self, '_pending_preview', False):
@@ -7203,6 +8237,7 @@ class TabQuickMod(BaseTab):
 
         self.config.signals.return_to_quick_mod.connect(self.on_return_from_post)        
         self.config.signals.set_quick_mod_id.connect(lambda tid: self.t9_id.setText(tid))
+        self.config.signals.sync_search_lang.connect(self.search_widget.sync_lang_ui)
 
     def _set_row_visible(self, form, field_widget, visible):
         """強大的防呆函數：隱藏 QFormLayout 中的整列元件 (包含標籤與按鈕)"""
@@ -7240,11 +8275,35 @@ class TabQuickMod(BaseTab):
         self._set_row_visible(self.form2, self.t9_id, not is_lobby)
 
     def execute_advanced_search(self, params):
-        dummy_map, db = MDEngine.get_csv_data(clean_path(self.config.get("t9_csv_dir")))
-        # ✨ 接收全量清單
-        all_matches = MDEngine.search_cards_advanced(params, db, search_lang=self.config.get("search_lang", "zh-tw"))
-        # 交付給 Widget 處理切片與分頁
-        self.search_widget.update_pagination_ui(all_matches, params.get("limit_per_page", 200))
+        csv_dir = clean_path(self.config.get("t9_csv_dir"))
+        is_active = self.search_widget.is_user_actively_searching(params)
+        
+        if not csv_dir or not os.path.isfile(csv_dir):
+            self.search_widget.update_pagination_ui([], params.get("limit_per_page", 200))
+            if is_active:
+                self.app.status_lbl.setText(_("⚠️ 提示：尚未設定或找不到對照表 CSV 檔案，請先確認路徑。"))
+            else:
+                self.app.status_lbl.setText(_("狀態：等待指令..."))
+            return
+
+        # 👈 新增：即時攔截，直接截斷檢索並重置狀態
+        if not is_active:
+            self.search_widget.update_pagination_ui([], params.get("limit_per_page", 200))
+            self.app.status_lbl.setText(_("狀態：等待指令..."))
+            return
+
+        try:
+            dummy_map, db = MDEngine.get_csv_data(csv_dir)
+            all_matches = MDEngine.search_cards_advanced(params, db, search_lang=self.config.get("search_lang", "zh-tw"))
+            self.search_widget.update_pagination_ui(all_matches, params.get("limit_per_page", 200))
+            
+            if len(all_matches) > 0:
+                self.app.status_lbl.setText(_("狀態：搜尋完成，共找到 {count} 筆。").format(count=len(all_matches)))
+            else:
+                self.app.status_lbl.setText(_("狀態：找不到符合條件的卡片。"))
+        except Exception as err:
+            self.search_widget.update_pagination_ui([], params.get("limit_per_page", 200))
+            self.app.status_lbl.setText(_("⚠️ 對照表讀取失敗：{error}").format(error=str(err)))
 
     def update_list_display(self, page_slice):
         # ✨ 0ms 瞬間更新 UI
@@ -7267,11 +8326,20 @@ class TabQuickMod(BaseTab):
             target_name = "ShopBGBase02"
             data_path = MDEngine.get_data_unity3d_safe(clean_path(c.get("t9_src_dir")))
             
-            if not os.path.isfile(clean_path(c.get("t9_img_path"))) or not os.path.isdir(clean_path(c.get("t9_out_dir"))):
-                return QMessageBox.critical(self, _("錯誤"), _("請確認「新圖片路徑」與「儲存目錄」皆正確填寫！"))
+            if not self.validate_paths([
+                ("file", c.get("t9_img_path"), _("新圖片路徑")),
+                ("dir", c.get("t9_out_dir"), _("儲存根目錄")),
+                ("file", data_path, _("遊戲 data.unity3d 原檔"))
+            ]):
+                return
                 
             def on_lobby_finish(ct, e):
-                QMessageBox.information(self, _("成功"), _("大廳背景修改成功！\n備份與新檔已儲存於設定好的資料夾中。"))
+                msg = _("大廳背景修改成功！\n備份與新檔已儲存於設定好的「改完的文件」中。")
+                if c.get("t9_overwrite_game"):
+                    msg += _("\n並且已成功覆寫至遊戲原廠目錄中！")
+                else:
+                    msg += _("\n(⚠️ 您未勾選直接覆蓋，因此遊戲內畫面尚未改變)")
+                QMessageBox.information(self, _("成功"), msg)
                 
             self.app.execute_task(self.btn_run, _("大廳背景替換中"), MDEngine.task_direct_replace,
                 (data_path, target_name, c.get("t9_out_dir"), c.get("t9_img_path"), c.get("t9_overwrite_game"), c.get("s_folder_backup"), c.get("s_folder_out")), on_lobby_finish)
@@ -7279,8 +8347,16 @@ class TabQuickMod(BaseTab):
 
         # 常規 / 超框卡片修改路由
         tid = self.t9_id.text().strip()
-        if not tid or not os.path.isfile(clean_path(c.get("t9_csv_dir"))) or not os.path.isdir(clean_path(c.get("t9_src_dir"))) or not os.path.isfile(clean_path(c.get("t9_img_path"))):
-            return QMessageBox.critical(self, _("錯誤"), _("請確認所有欄位皆已正確填寫！"))
+        if not tid:
+            return QMessageBox.critical(self, _("錯誤"), _("請確認目標卡片 ID 已填寫！"))
+            
+        if not self.validate_paths([
+            ("file", c.get("t9_csv_dir"), _("字典 (CSV)")),
+            ("dir", c.get("t9_src_dir"), _("原檔來源 (0000)")),
+            ("dir", c.get("t9_out_dir"), _("儲存根目錄")),
+            ("file", c.get("t9_img_path"), _("新圖片路徑"))
+        ]):
+            return
             
         def on_finish(ct, e):
             if is_overframe:
@@ -7299,10 +8375,16 @@ class TabQuickMod(BaseTab):
         card_id = self.t9_id.text().strip()
         img_path = clean_path(c.get("t9_img_path"))
         root_dir = clean_path(c.get("t9_out_dir"))
-        
-        if not card_id or not os.path.isfile(img_path) or not os.path.isdir(root_dir):
-            return QMessageBox.critical(self, _("錯誤"), _("請確認「目標卡片 ID」、「新圖片路徑」與「儲存根目錄」皆已填寫且有效！"))
-        
+
+        if not card_id:
+            return QMessageBox.critical(self, _("錯誤"), _("請確認目標卡片 ID 已填寫！"))
+
+        if not self.validate_paths([
+            ("file", img_path, _("新圖片路徑")),
+            ("dir", root_dir, _("儲存根目錄"))
+        ]):
+            return
+
         # 發射訊號傳遞給 Tab 8 進行超框處理，並自動跳轉至 Tab 8
         self.config.signals.request_overframe_shortcut.emit(card_id, img_path, root_dir)
         self.app.select_tab("t8_pendulum")
@@ -7327,6 +8409,9 @@ class TabGallery(BaseTab):
             (_("頭像 (Icon)"), "CAT_ICON"),
             (_("卡套 (Sleeve)"), "CAT_SLEEVE"),
             (_("大廳背景 (Wallpaper)"), "CAT_WALLPAPER"),
+            (_("卡牌外框 (Card Frame)"), "CAT_CARDFRAME"),
+            (_("核心介面圖示 (Data.unity3d Icon)"), "CAT_DATA_ICON"),
+            (_("全部核心資產 (data.unity3d All)"), "CAT_DATA_ALL"),
             (_("檔案篩選 (File Filter)"), "CAT_FILTER")
         ]
         for display_name, raw_name in categories:
@@ -7376,14 +8461,19 @@ class TabGallery(BaseTab):
         
         # 🛡️ 徹底接管滾動引擎：抹除 Qt 所有的物理加減速動畫，實現網頁式的「直上直下」
         def instant_wheel_scroll(event):
+            # ✨ 核心：偵測 CTRL 鍵實現直覺縮放
+            if event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+                delta = event.angleDelta().y()
+                step = 10 if delta > 0 else -10
+                self.sp_icon_size.setValue(self.sp_icon_size.value() + step)
+                event.accept()
+                return
+
             v_bar = self.list_widget.verticalScrollBar()
             delta = event.angleDelta().y()
             if delta != 0:
-                # 網頁式線性滾動：按物理滾動量等比例直接遞增/遞減，毫秒級反應，完全沒有平滑動畫與慣性累積
-                # 使用 1.25 倍率能讓滑鼠滾輪非常靈敏，且觸控板雙指滑動時順暢無比、即停即止
                 scroll_amount = int(delta * 1.25)
                 v_bar.setValue(v_bar.value() - scroll_amount)
-            # 強制吸收事件，防止滾動向父視窗傳遞
             event.accept()
             
         self.list_widget.wheelEvent = instant_wheel_scroll
@@ -7402,6 +8492,108 @@ class TabGallery(BaseTab):
         
         h2.addWidget(self.btn_t2); h2.addWidget(self.btn_t9); h2.addWidget(self.btn_send_back)
         v.addLayout(h2)
+
+        # ─── 顯示與快取畫質設定區 (改用摺疊面板，徹底釋放視野) ───
+        self.btn_toggle_view = QPushButton(_("▼ 顯示與快取設定 [展開]"))
+        self.btn_toggle_view.setCheckable(True)
+        # ✨ 從設定檔讀取面板是否展開的記憶
+        is_view_expanded = self.config.get("t12_view_expanded", False)
+        self.btn_toggle_view.setChecked(is_view_expanded)
+        self.btn_toggle_view.setStyleSheet("color: #E0C030; font-weight: bold; margin-top: 5px;")
+        
+        self.grp_view = QGroupBox(_("顯示與快取設定"))
+        h_view = QHBoxLayout(self.grp_view)
+        h_view.setContentsMargins(10, 10, 10, 10)
+        
+        # 1. 提取畫質：改為可編輯，允許使用者自由輸入自訂解析度
+        self.cb_fetch_size = QComboBox()
+        self.cb_fetch_size.setEditable(True)
+        for disp, val in [(_("原始畫質 (原檔尺寸)"), "ORIGINAL"), ("128px", "128"), ("256px", "256"), ("512px", "512"), ("1024px", "1024")]:
+            self.cb_fetch_size.addItem(disp, val)
+            
+        # ✨ 從設定檔讀取上次存的畫質
+        saved_fetch = str(self.config.get("t12_fetch_size", "128"))
+        idx_fetch = self.cb_fetch_size.findData(saved_fetch)
+        if idx_fetch >= 0: self.cb_fetch_size.setCurrentIndex(idx_fetch)
+        else: self.cb_fetch_size.setCurrentText(saved_fetch)
+        
+        # 將變更即時存回設定檔 (✨ 防汙染部分儲存，直接寫入硬碟)
+        def on_fetch_changed():
+            curr_data = self.cb_fetch_size.currentData()
+            self.config.save_single_key("t12_fetch_size", curr_data if curr_data else self.cb_fetch_size.currentText().strip())
+            
+        self.cb_fetch_size.currentIndexChanged.connect(lambda idx: on_fetch_changed())
+        self.cb_fetch_size.lineEdit().editingFinished.connect(on_fetch_changed)
+        self.block_wheelEvent(self.cb_fetch_size)
+        
+        # 2. 圖示大小：滑桿 + 微調框雙向連動，使用者可任意輸入數值
+        # ✨ 載入大小記憶
+        saved_icon_size = self.get_safe_int("t12_icon_size", 128)
+        
+        self.sl_icon_size = QSlider(Qt.Horizontal)
+        self.sl_icon_size.setRange(32, 512)
+        self.sl_icon_size.setValue(saved_icon_size)
+        self.block_slider_wheel(self.sl_icon_size)
+
+        self.sp_icon_size = QSpinBox()
+        self.sp_icon_size.setRange(16, 2048)
+        self.sp_icon_size.setValue(saved_icon_size)
+        self.sp_icon_size.setSuffix(" px")
+        self.block_wheelEvent(self.sp_icon_size)
+
+        def update_icon_size(v_val):
+            target_val = max(16, int(v_val))
+            self.config.save_single_key("t12_icon_size", target_val)
+            
+            cat_name = self.cb_cat.currentData()
+            is_sleeve_category = (cat_name == "CAT_SLEEVE")
+
+            if is_sleeve_category:
+                i_w = target_val
+                i_h = int(target_val * 1.5)
+                self.list_widget.setIconSize(QSize(i_w, i_h))
+                self.list_widget.setGridSize(QSize(i_w + 30, i_h + 85))
+            else:
+                self.list_widget.setIconSize(QSize(target_val, target_val))
+                self.list_widget.setGridSize(QSize(target_val + 30, target_val + 85))
+
+        def on_slider_changed(val):
+            if self.sp_icon_size.value() != val:
+                self.sp_icon_size.blockSignals(True)
+                self.sp_icon_size.setValue(val)
+                self.sp_icon_size.blockSignals(False)
+            update_icon_size(val)
+
+        def on_spinbox_changed(val):
+            clamped_slider = min(max(val, self.sl_icon_size.minimum()), self.sl_icon_size.maximum())
+            if self.sl_icon_size.value() != clamped_slider:
+                self.sl_icon_size.blockSignals(True)
+                self.sl_icon_size.setValue(clamped_slider)
+                self.sl_icon_size.blockSignals(False)
+            update_icon_size(val)
+
+        self.sl_icon_size.valueChanged.connect(on_slider_changed)
+        self.sp_icon_size.valueChanged.connect(on_spinbox_changed)
+        
+        h_view.addWidget(QLabel(_("提取畫質 (可手動輸入，需重載):"))); h_view.addWidget(self.cb_fetch_size)
+        h_view.addSpacing(15)
+        h_view.addWidget(QLabel(_("介面圖示大小 (即時):"))); h_view.addWidget(self.sl_icon_size); h_view.addWidget(self.sp_icon_size)
+        
+        # 綁定展開收合事件 (✨ 同步部分儲存展開狀態)
+        self.btn_toggle_view.toggled.connect(lambda checked: [
+            self.grp_view.setVisible(checked),
+            self.config.save_single_key("t12_view_expanded", checked),
+            self.btn_toggle_view.setText(_("▲ 顯示與快取設定 [收合]") if checked else _("▼ 顯示與快取設定 [展開]"))
+        ])
+        
+        v.addWidget(self.btn_toggle_view)
+        v.addWidget(self.grp_view)
+        self.grp_view.setVisible(is_view_expanded)
+        self.btn_toggle_view.setText(_("▲ 顯示與快取設定 [收合]") if is_view_expanded else _("▼ 顯示與快取設定 [展開]"))
+        
+        # 移除強制高度，讓 Layout 自然把圖庫撐到最大！
+        self.list_widget.setMinimumHeight(0) 
+        
         self.layout.addWidget(grp)
 
     def on_cat_changed(self, logic_id):
@@ -7413,6 +8605,10 @@ class TabGallery(BaseTab):
         self.btn_send_back.setVisible(is_filter)
         self.btn_t2.setVisible(not is_filter)
         self.btn_t9.setVisible(not is_filter)
+
+        # ✨ 切換分類時，若在卡套與普通物件間切換，立刻刷新網格比例
+        if hasattr(self, 'sp_icon_size'):
+            self.sp_icon_size.valueChanged.emit(self.sp_icon_size.value())
 
     def set_filter_mode(self, id_list):
         self._filter_target_ids = id_list
@@ -7455,13 +8651,31 @@ class TabGallery(BaseTab):
             
     def load_gallery(self):
         c = self.config
+
+        if not self.validate_paths([
+            ("file", c.get("t2_csv_dir"), _("對照表 (CSV)")),
+            ("dir", c.get("t2_src_dir"), _("檔案來源 (0000)"))
+        ]):
+            return
+        
         csv_path = clean_path(c.get("t2_csv_dir"))
-        if not os.path.exists(csv_path): return QMessageBox.warning(self, _("錯誤"), _("請先確認「找出檔案」分頁的 CSV 對照表已載入！"))
-        mapping, _db = MDEngine.get_csv_data(csv_path)
+        mapping, dummy_db = MDEngine.get_csv_data(csv_path)
         
         cat_name = self.cb_cat.currentData()
 
-        # 👇 攔截「檔案篩選」模式，改用專屬沙盒邏輯
+        # 優先自「提取畫質」取得設定，若為手動輸入則萃取純數字或保留 ORIGINAL
+        target_res = self.cb_fetch_size.currentData()
+        if not target_res:
+            raw_text = self.cb_fetch_size.currentText().strip()
+            digits = re.findall(r'\d+', raw_text)
+            if digits:
+                target_res = digits[0]
+            elif any(keyword in raw_text.lower() for keyword in ["original", "原"]):
+                target_res = "ORIGINAL"
+            else:
+                target_res = "128"
+
+        # 檔案篩選專屬沙盒
         if cat_name == "CAT_FILTER":
             if not hasattr(self, '_filter_target_ids') or not self._filter_target_ids:
                 return QMessageBox.warning(self, _("提示"), _("請先從「找出檔案」分頁點擊「🔍 視覺化篩選」來載入資料。"))
@@ -7477,52 +8691,68 @@ class TabGallery(BaseTab):
             if not items_to_fetch: return QMessageBox.information(self, _("提示"), _("在對照表中找不到這些項目的對應檔案。"))
             
             self._gallery_render_list = render_list
-            src_dir, cache_dir = clean_path(c.get("t2_src_dir")), os.path.join(MDEngine.TEMP_DIR, "filter_sandbox")
-            self.app.execute_task(None, _("生成篩選縮圖中"), MDEngine.task_gallery_cache, (items_to_fetch, src_dir, cache_dir), self.render_gallery)
+            src_dir = clean_path(c.get("t2_src_dir"))
+            cache_dir = os.path.join(MDEngine.TEMP_DIR, "filter_sandbox")
+            
+            # 清理舊沙盒，確保當前指定的「提取畫質」能重新生效
+            if os.path.exists(cache_dir):
+                shutil.rmtree(cache_dir, ignore_errors=True)
+                
+            self.app.execute_task(None, _("生成篩選縮圖中"), MDEngine.task_gallery_cache, (items_to_fetch, src_dir, cache_dir, target_res), self.render_gallery)
             return
         
+        # 遵循專案原廠定義之字典規則
         cat_map = {
-            "CAT_MAT": lambda n: 'basecolor' in n.lower() and 'mat_' in n.lower(),
-            "CAT_COIN": lambda n: 'coin01tex' in n.lower() or 'cointex' in n.lower() or 'cointossicon' in n.lower(),
-            "CAT_DECKCASE": lambda n: 'deckcase' in n.lower(),
-            "CAT_FRAME": lambda n: 'profileframe' in n.lower(),
-            "CAT_ICON": lambda n: 'profileicon' in n.lower(),
-            "CAT_SLEEVE": lambda n: 'protectoricon' in n.lower(),
-            "CAT_WALLPAPER": lambda n: 'wallpaper' in n.lower() and not any(b in n.lower() for b in ['wallpapericon', 'wallpaperthumb', 'gui_wallpaperbg', 'productthumbbgwallpaperprofile', 'sactx-0-2048x1024-bc7', 'wallpapersale', 'wallpapertopicsthumb'])
+            "CAT_MAT": lambda n, f: 'basecolor' in n.lower() and 'mat_' in n.lower(),
+            "CAT_COIN": lambda n, f: 'coin01tex' in n.lower() or 'cointex' in n.lower() or 'cointossicon' in n.lower(),
+            "CAT_DECKCASE": lambda n, f: 'deckcase' in n.lower(),
+            "CAT_FRAME": lambda n, f: 'profileframe' in n.lower(),
+            "CAT_ICON": lambda n, f: 'profileicon' in n.lower(),
+            "CAT_SLEEVE": lambda n, f: 'protectoricon' in n.lower(),
+            "CAT_WALLPAPER": lambda n, f: 'wallpaper' in n.lower() and not any(b in n.lower() for b in ['wallpapericon', 'wallpaperthumb', 'gui_wallpaperbg', 'productthumbbgwallpaperprofile', 'sactx-0-2048x1024-bc7', 'wallpapersale', 'wallpapertopicsthumb']),
+            "CAT_CARDFRAME": lambda n, f: n.lower().startswith('card_frame'),
+            "CAT_DATA_ICON": lambda n, f: f == "data.unity3d" and 'icon' in n.lower() and not any(b in n.lower() for b in ['profileicon', 'profileframe', 'protectoricon', 'cointossicon']),
+            "CAT_DATA_ALL": lambda n, f: f == "data.unity3d"
         }
         filter_fn = cat_map.get(cat_name)
         
         items_to_fetch = {}
         render_list = {}
         for item_id, entries in mapping.items():
-            if filter_fn(item_id):
+            folder_type = entries[0]['folder']
+            if filter_fn(item_id, folder_type):
                 hash_val = entries[0]['hash']
                 for entry in entries: items_to_fetch.setdefault(entry['hash'], []).append(item_id)
-                render_list[item_id] = hash_val
+                render_list[item_id] = (hash_val, folder_type)
                     
         if not items_to_fetch: return QMessageBox.information(self, _("提示"), _("在對照表中找不到該分類的項目。請確認已掃描並補齊對照表！"))
             
         self._gallery_render_list = render_list
         src_dir, cache_dir = clean_path(c.get("t2_src_dir")), os.path.join(MDEngine.TEMP_DIR, "gallery_cache")
-        self.app.execute_task(None, _("生成縮圖快取中"), MDEngine.task_gallery_cache, (items_to_fetch, src_dir, cache_dir), self.render_gallery)
+        self.app.execute_task(None, _("生成縮圖快取中"), MDEngine.task_gallery_cache, (items_to_fetch, src_dir, cache_dir, target_res), self.render_gallery)
             
     def render_gallery(self, ct, cache_dir):
         self.list_widget.clear()
-        cat_name = self.cb_cat.currentData()
-        is_sleeve = (cat_name == "CAT_SLEEVE")
         
-        # 🛡️ 鎖死網格大小 (GridSize)，給予充裕的高度空間
-        if is_sleeve:
-            self.list_widget.setIconSize(QSize(100, 150))
-            self.list_widget.setGridSize(QSize(130, 230))
-        else:
-            self.list_widget.setIconSize(QSize(128, 128))
-            self.list_widget.setGridSize(QSize(155, 215))
+        cat_name = self.cb_cat.currentData()
+        is_sleeve_category = (cat_name == "CAT_SLEEVE")
+        
+        # 介面尺寸僅負責控制 QListWidget 顯示容器大小，不干涉實際圖片解析度
+        curr_size = self.sl_icon_size.value()
+        i_w = curr_size
+        i_h = int(curr_size * 1.5) if is_sleeve_category else curr_size
+        self.list_widget.setIconSize(QSize(i_w, i_h))
+        self.list_widget.setGridSize(QSize(i_w + 30, i_h + 85))
         
         render_dict = getattr(self, '_gallery_render_list', {})
         all_ids = set(render_dict.keys())
         
-        for item_id, hash_val in render_dict.items():
+        for item_id, val in render_dict.items():
+            if isinstance(val, tuple):
+                hash_val, folder_type = val
+            else:
+                hash_val, folder_type = val, "0000"
+
             if item_id.startswith("ProfileFrame") or item_id.startswith("ProfileIcon"):
                 if not item_id.endswith("_L") and not item_id.endswith("_l"):
                     if f"{item_id}_L" in all_ids or f"{item_id}_l" in all_ids:
@@ -7531,21 +8761,24 @@ class TabGallery(BaseTab):
             img_path = os.path.join(cache_dir, f"{item_id}.png")
             if os.path.exists(img_path):
                 pix = QPixmap(img_path)
-                pix = pix.scaled(100, 150, Qt.IgnoreAspectRatio, Qt.SmoothTransformation) if is_sleeve else pix.scaled(128, 128, Qt.KeepAspectRatio, Qt.SmoothTransformation)
                 
-                # 🛡️ 破解 Qt 愚蠢的換行機制：強制依據字元長度切割並換行
-                # width=16 代表大約每 16 個字母就強制換行，break_long_words=True 允許切斷沒有空白的長單字
+                # 嚴格遵循既有規範：以 'protectoricon' 作為卡套判定唯一標準
+                if 'protectoricon' in item_id.lower():
+                    # 依據圖片本身的真實寬度（來自提取畫質設定）拉伸為 1:1.5，完全不使用介面縮放滑桿降畫素
+                    stretched_h = int(pix.width() * 1.5)
+                    pix = pix.scaled(pix.width(), stretched_h, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
+                
+                # 非卡套物件不呼叫 pix.scaled，維持快取檔案的原生像素交給 QIcon，由 Qt 視窗引擎在繪圖時無損縮放
                 wrapped_name = textwrap.fill(item_id, width=16, break_long_words=True)
                 
-                # 將換行處理後的名字與 Hash 碼組合
-                item = QListWidgetItem(QIcon(pix), f"{wrapped_name}\n[{hash_val[:8]}]")
+                badge = ""
+                if folder_type == "data.unity3d": badge = f"\n<{folder_type}>"
+                elif folder_type == "StreamingAssets": badge = f"\n<{folder_type}>"
+                
+                item = QListWidgetItem(QIcon(pix), f"{wrapped_name}\n[{hash_val[:8]}]{badge}")
                 item.setData(Qt.UserRole, item_id)
-                
-                # 🛡️ 設定文字置中對齊，讓換行後的文字看起來像是整齊的碑文，而不是歪七扭八的
                 item.setTextAlignment(Qt.AlignCenter)
-                
-                # 終極防線：保留 ToolTip 讓玩家依然能輕易複製或查看最原始的單行名稱
-                item.setToolTip(_("完整名稱: {item_id}\nHash檔名: {hash_val}").format(item_id=item_id, hash_val=hash_val))
+                item.setToolTip(_("完整名稱: {item_id}\nHash檔名: {hash_val}\n來源: {folder}").format(item_id=item_id, hash_val=hash_val, folder=folder_type))
                 
                 self.list_widget.addItem(item)
         return _("圖庫載入完成！")
@@ -7553,7 +8786,7 @@ class TabGallery(BaseTab):
     def send_to_tab2(self):
         selected = self.list_widget.selectedItems()
         if not selected: return
-        mapping, _db = MDEngine.get_csv_data(self.config.get("t2_csv_dir"))
+        mapping, dummy_db = MDEngine.get_csv_data(self.config.get("t2_csv_dir"))
         all_ids = set(mapping.keys())
         to_extract = set()
         
@@ -7618,11 +8851,20 @@ class TabUpdater(BaseTab):
 
     def run_task(self):
         c = self.config
-        old_mod, clean_src, out_root, overwrite = clean_path(c.get("t10_old_mod_dir")), clean_path(c.get("t10_clean_src_dir")), clean_path(c.get("t10_out_dir")), c.get("t10_overwrite")
-        if not os.path.isdir(old_mod) or not os.path.isdir(clean_src):
-            return QMessageBox.critical(self, _("錯誤"), _("請確認「舊模組目錄」與「遊戲原檔目錄」皆存在！"))
-        if not overwrite and not os.path.isdir(out_root):
-            return QMessageBox.critical(self, _("錯誤"), _("請設定一個有效的「輸出儲存根目錄」。"))
+        old_mod = clean_path(c.get("t10_old_mod_dir"))
+        clean_src = clean_path(c.get("t10_clean_src_dir"))
+        out_root = clean_path(c.get("t10_out_dir"))
+        overwrite = c.get("t10_overwrite")
+
+        reqs = [
+            ("dir", old_mod, _("舊模組目錄")),
+            ("dir", clean_src, _("遊戲原檔 (0000)"))
+        ]
+        if not overwrite:
+            reqs.append(("dir", out_root, _("輸出根目錄")))
+
+        if not self.validate_paths(reqs):
+            return
         if overwrite:
             reply = QMessageBox.question(self, _("風險警告"), _("你選擇了「直接覆蓋掉舊模組」。\n請問是否繼續？"), QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
             if reply == QMessageBox.No: return
@@ -7737,9 +8979,13 @@ class TabVirtualMount(BaseTab):
 
     def run_apply(self):
         c = self.config
+        if not self.validate_paths([
+            ("dir", c.get("t11_mod_root_dir"), _("模組存放根目錄")),
+            ("dir", c.get("t11_game_0000_dir"), _("遊戲 0000 資料夾"))
+        ]):
+            return
+            
         root, game = clean_path(c.get("t11_mod_root_dir")), clean_path(c.get("t11_game_0000_dir"))
-        if not os.path.isdir(root) or not os.path.isdir(game): return QMessageBox.warning(self, _("錯誤"), _("請確認路徑存在！"))
-        
         raw_active = [self.list_en.item(i).text() for i in range(self.list_en.count())]
         
         valid_active, ghosts = MDEngine.filter_valid_mods(root, raw_active)
@@ -7804,10 +9050,45 @@ class TabChain(BaseTab):
 
     def start_chain(self):
         c = self.config
+        reqs = []
+        
+        if c.get("c_t2"):
+            reqs.extend([
+                ("dir", c.get("t2_src_dir"), _("[找出檔案] 檔案來源 (0000)")),
+                ("file", c.get("t2_csv_dir"), _("[找出檔案] 對照表 (CSV)")),
+                ("path", c.get("t2_out_dir"), _("[找出檔案] 儲存根目錄"))
+            ])
+        elif c.get("c_t3"):
+            # 只有未勾選 T2 卻單獨勾選 T3 時，才需將 T3 來源視為必須預先存在的靜態目錄
+            reqs.append(("dir", c.get("t3_src_var"), _("[提取資料] 欲提取檔案所在資料夾")))
+
+        if c.get("c_t8"): 
+            reqs.extend([
+                ("path", clean_path(c.get("t8_root_dir")), _("[靈擺後處理] 專案根目錄")),
+                ("file", c.get("t8_csv_dir"), _("[靈擺後處理] 字典 (CSV)"))
+            ])
+
         if c.get("c_t4"):
+            root = clean_path(c.get("t4_root_dir"))
+            reqs.extend([
+                ("path", root, _("[更改卡圖] 專案根目錄")),
+                ("file", c.get("t4_csv_dir"), _("[更改卡圖] 字典 (CSV)")),
+            ])
+
+        if c.get("c_t5"):
+            reqs.extend([
+                ("path", c.get("t5_root_dir"), _("[封裝模組] 專案根目錄")),
+                ("file", c.get("t5_csv_dir"), _("[封裝模組] 字典 (CSV)"))
+            ])
+
+        if reqs and not self.validate_paths(reqs):
+            return
+        
+        # 🛡️ 圖片存在性前置檢查：同樣只在沒有 T8 幫忙產圖的情況下才攔截
+        if c.get("c_t4") and not c.get("c_t8"):
             mod_dir = MDEngine.resolve_path(clean_path(c.get("t4_root_dir")), c.get("t4_mod_name", "").strip() or "卡圖改")
             if not os.path.isdir(mod_dir) or not any(f.lower().endswith(('.png', '.jpg')) for f in os.listdir(mod_dir)):
-                return QMessageBox.critical(self, _("防呆錯誤"), _("偵測到勾選了「更改卡圖」，但您的「欲替換的圖片」資料夾內沒有圖片！已終止。"))
+                return QMessageBox.critical(self, _("防呆錯誤"), _("偵測到勾選了「更改卡圖」，但您的「卡圖改」資料夾不存在或內無可替換圖片！已終止。"))
         
         queue = []
         if c.get("c_t2"): queue.append("T2")
@@ -7852,10 +9133,10 @@ class TabChain(BaseTab):
             folder_name = c.get("t2_folder_name", "").strip() or "原檔" 
             hash_dir = os.path.join(c.get("t2_out_dir", ""), folder_name)
             
-            # 🛡️ 確保自動化流程也具備主對照表的映射能力
+            # 🛡️ 確保自動化流程也具備主對照表的映射能力與核心解析路徑
             self.app.execute_task(None, _("[自動化] 提取資料"), MDEngine.task_extract, 
                 (hash_dir, c.get("t3_img_folder"), c.get("s_folder_backup"), c.get("s_csv_mapping"), 
-                 c.get("t3_exp_csv"), c.get("t3_exp_img"), c.get("t3_exp_txt", True), c.get("t3_exp_backup"), c.get("t2_csv_dir"), c.get("enable_visual_only_filter", True)), lambda s,c_num,x: self.run_next(queue, s, c_num, x), is_chain=True)
+                 c.get("t3_exp_csv"), c.get("t3_exp_img"), c.get("t3_exp_txt", True), c.get("t3_exp_backup"), c.get("t2_csv_dir"), c.get("enable_visual_only_filter", True), clean_path(c.get("t2_src_dir"))), lambda s,c_num,x: self.run_next(queue, s, c_num, x), is_chain=True)
                  
         elif task == "T8":
             mod_dir = MDEngine.resolve_path(clean_path(c.get("t8_root_dir")), c.get("t8_mod_dir", "").strip() or "卡圖改")
@@ -7878,8 +9159,16 @@ class TabChain(BaseTab):
             root = clean_path(c.get("t4_root_dir"))
             bk_dir = MDEngine.resolve_path(root, c.get("t4_backup_name", "").strip() or "文件備份")
             mod_dir = MDEngine.resolve_path(root, c.get("t4_mod_name", "").strip() or "卡圖改")
+            
+            def on_replace_done(s, ct, e):
+                if not s: return self.run_next(queue, s, ct, e)
+                target_dir = clean_path(c.get("t2_src_dir")) or clean_path(c.get("t1_target_dir"))
+                out_folder = c.get("s_folder_out", "").strip() or "改完的文件"
+                self.app.execute_task(None, _("[自動化] data.unity3d 同步檢測中"), MDEngine.task_batch_replace_data_unity3d,
+                    (target_dir, mod_dir, c.get("t4_csv_dir"), root, out_folder), lambda s_d, ct_d, e_d: self.run_next(queue, s_d, ct_d, e_d), is_chain=True)
+
             self.app.execute_task(None, _("[自動化] 更改卡圖"), MDEngine.task_replace, 
-                (c.get("t4_csv_dir"), root, bk_dir, mod_dir, c.get("s_folder_out", "").strip() or "改完的文件"), lambda s,c_num,x: self.run_next(queue, s, c_num, x), is_chain=True)
+                (c.get("t4_csv_dir"), root, bk_dir, mod_dir, c.get("s_folder_out", "").strip() or "改完的文件"), on_replace_done, is_chain=True)
                 
         elif task == "T5":
             root = clean_path(c.get("t5_root_dir"))
@@ -7888,7 +9177,7 @@ class TabChain(BaseTab):
                 (root, c.get("t5_mod_folder_name", "").strip() or "ModFolder", c.get("t5_readme_text"), mod_dir, 
                  c.get("t5_pack_zip"), c.get("t5_csv_dir"), c.get("s_folder_backup", "").strip() or "文件備份", 
                  c.get("s_folder_out", "").strip() or "改完的文件", c.get("t8_backup_folder", "").strip() or "修改前原檔",
-                 c.get("t5_include_mod_folder", True), c.get("t5_include_readme", True), c.get("s_csv_mapping", "2DTexture_Mapping.csv")), lambda s,c_num,x: self.run_next(queue, s, c_num, x), is_chain=True)
+                 c.get("t5_include_card_art", True), c.get("t5_include_readme", True), c.get("s_csv_mapping", "2DTexture_Mapping.csv")), lambda s,c_num,x: self.run_next(queue, s, c_num, x), is_chain=True)
 
 # ==================== 分頁 13: 超框註冊器 ====================
 class TabOverFrame(BaseTab):
@@ -7966,8 +9255,8 @@ class TabOverFrame(BaseTab):
 
         v1.addLayout(grid1)
 
-        mono_font = QFontDatabase.systemFont(QFontDatabase.FixedFont)
-        if mono_font.pointSize() <= 0: mono_font.setPointSize(10)
+        mono_font = QFont("Consolas", 10)
+        mono_font.setStyleHint(QFont.Monospace)
         
         self.txt_existing = QPlainTextEdit()
         self.txt_existing.setFont(mono_font)
@@ -8023,6 +9312,16 @@ class TabOverFrame(BaseTab):
         self.config.signals.set_return_to_tab4.connect(lambda val: setattr(self, '_return_to_tab4', val))
         self.config.signals.request_overframe_register.connect(lambda t: self.txt_new.setPlainText(t))
 
+        self.config.signals.sync_search_lang.connect(self.on_sync_search_lang)
+
+    def on_sync_search_lang(self, new_lang):
+        if self.cb_lang.currentText().strip().lower() != new_lang:
+            self.cb_lang.blockSignals(True)
+            self.cb_lang.setCurrentText(new_lang)
+            self.cb_lang.blockSignals(False)
+            if self.txt_existing.toPlainText().strip():
+                self.load_gate(silent=True)
+
     def _load_hash_history(self):
         hist_file = os.path.join(MDEngine.TEMP_DIR, "of_card_asset_backups", "hash_history.json")
         hashes = ["22817d01", "a589d3b5"]
@@ -8053,15 +9352,19 @@ class TabOverFrame(BaseTab):
             self.norm_txt()
         self.app.select_tab("t13_overframe")
 
-    def load_gate_if_possible(self):
-        if self.txt_existing.toPlainText().strip(): self.load_gate()
+    def load_gate_if_possible(self, silent=False):
+        if self.txt_existing.toPlainText().strip(): self.load_gate(silent)
 
     def run_manual_sync(self):
         c = self.config
-        src_dir, out_root = clean_path(c.get("t13_src_dir")), clean_path(c.get("t13_out_dir"))
-        if not os.path.isdir(src_dir) or not os.path.isdir(out_root):
-            return QMessageBox.critical(self, _("錯誤"), _("來源或輸出目錄設定無效！"))
+
+        if not self.validate_paths([
+            ("dir", c.get("t13_src_dir"), _("遊戲原檔來源 (0000)")),
+            ("dir", c.get("t13_out_dir"), _("儲存根目錄"))
+        ]):
+            return
         
+        src_dir, out_root = clean_path(c.get("t13_src_dir")), clean_path(c.get("t13_out_dir"))
         curr_hash = c.get("t13_gate_hash", "22817d01")
         out_folder = c.get("s_folder_out", "改完的文件")
         backup_folder = c.get("s_folder_backup", "文件備份")
@@ -8081,8 +9384,15 @@ class TabOverFrame(BaseTab):
         self.app.execute_task(self.btn_run, _("掃描與修正中"), MDEngine.task_manual_sync_overframe, 
             (src_dir, out_root, out_folder, backup_folder, curr_hash), finish_handler)
 
-    def load_gate(self):
+    def load_gate(self, silent=False): # 👈 加入 silent 參數
         c = self.config
+        
+        # 🛡️ 補齊前置檢查
+        if not self.validate_paths([
+            ("dir", c.get("t13_src_dir"), _("遊戲原檔來源 (0000)"))
+        ]):
+            return
+            
         src_dir = clean_path(c.get("t13_src_dir"))
         current_hash = clean_path(c.get("t13_gate_hash", "22817d01"))
         
@@ -8092,7 +9402,6 @@ class TabOverFrame(BaseTab):
             
         is_valid = MDEngine.validate_gate_file(gate_path)
             
-        # 🛡️ 順位 2：檢查使用者輸入是否為絕對路徑
         if not is_valid and os.path.isabs(current_hash) and os.path.isfile(current_hash):
             if MDEngine.validate_gate_file(current_hash):
                 gate_path = current_hash
@@ -8111,13 +9420,13 @@ class TabOverFrame(BaseTab):
                 self.cb_gate_hash.setCurrentText(hash_name)
                 self.config.save_single_key("t13_gate_hash", hash_name)
                 self._add_hash_to_history(hash_name)
-                self._render_gate(os.path.join(out_root, out_folder, hash_name))
+                self._render_gate(os.path.join(out_root, out_folder, hash_name), silent) # 👈 傳遞 silent
                 return _("偵測到遊戲更新，已自動爆搜並無縫轉移您的自訂名單！\n新的 Hash 為：{hash}").format(hash=hash_name)
                 
             return self.app.execute_task(None, _("發現遊戲更新！自動無縫修復中"), MDEngine.task_auto_repair_gate, 
                                          (src_dir, out_root, out_folder, backup_folder, current_hash), on_found)
 
-        self._render_gate(gate_path)
+        self._render_gate(gate_path, silent)
 
     def _get_rendered_gate_text(self, records):
         c = self.config
@@ -8144,10 +9453,11 @@ class TabOverFrame(BaseTab):
             final_text += separator
             return final_text
 
-    def _render_gate(self, gate_path):
+    def _render_gate(self, gate_path, silent=False): # 👈 加入 silent 參數
         records = MDEngine.read_overframe_bytes(gate_path)
         self.txt_existing.setPlainText(self._get_rendered_gate_text(records))
-        self.app.status_lbl.setText(_("狀態：遊戲現有白名單已成功載入！"))
+        if not silent: # 👈 阻斷狀態列劫持
+            self.app.status_lbl.setText(_("狀態：遊戲現有白名單已成功載入！"))
 
     def clear_cache(self):
         target_hash = clean_path(self.config.get("t13_gate_hash", "22817d01"))
@@ -8213,10 +9523,14 @@ class TabOverFrame(BaseTab):
 
     def save_existing_only(self):
         c = self.config
+
+        if not self.validate_paths([
+            ("dir", c.get("t13_src_dir"), _("遊戲原檔來源 (0000)")),
+            ("dir", c.get("t13_out_dir"), _("儲存根目錄"))
+        ]):
+            return
+        
         src_dir, out_root = clean_path(c.get("t13_src_dir")), clean_path(c.get("t13_out_dir"))
-        if not os.path.isdir(src_dir) or not os.path.isdir(out_root):
-            return QMessageBox.critical(self, _("錯誤"), _("來源或輸出目錄設定無效！"))
-            
         rec_curr, conf_curr = MDEngine.parse_overframe_text(self.txt_existing.toPlainText())
         if conf_curr:
             return QMessageBox.critical(self, _("語法錯誤"), _("文字框中存在格式錯誤，請檢查：\n") + "\n".join(conf_curr))
@@ -8236,10 +9550,11 @@ class TabOverFrame(BaseTab):
 
     def merge_gate(self):
         c = self.config
+        if not self.validate_paths([
+            ("file", c.get("t13_merge_gate_path"), _("欲合併用註冊表"))
+        ]):
+            return
         merge_path = clean_path(c.get("t13_merge_gate_path"))
-        if not os.path.isfile(merge_path):
-            return QMessageBox.warning(self, _("錯誤"), _("請先在上方設定中選擇有效的「欲合併用註冊表」路徑！"))
-
         ext_records = MDEngine.read_overframe_bytes(merge_path)
         if not ext_records:
             return QMessageBox.warning(self, _("錯誤"), _("無法解析該檔案，請確認是否為正常的 of_card_asset 資源！"))
@@ -8268,10 +9583,12 @@ class TabOverFrame(BaseTab):
 
     def run_task(self):
         c = self.config
+        if not self.validate_paths([
+            ("dir", c.get("t13_src_dir"), _("遊戲原檔來源 (0000)")),
+            ("dir", c.get("t13_out_dir"), _("儲存根目錄"))
+        ]):
+            return
         src_dir, out_root = clean_path(c.get("t13_src_dir")), clean_path(c.get("t13_out_dir"))
-        if not os.path.isdir(src_dir) or not os.path.isdir(out_root):
-            return QMessageBox.critical(self, _("錯誤"), _("來源或輸出目錄設定無效！"))
-            
         rec_curr, conf_curr = MDEngine.parse_overframe_text(self.txt_existing.toPlainText())
         rec_new, conf_new = MDEngine.parse_overframe_text(self.txt_new.toPlainText())
         if conf_curr + conf_new:
@@ -8646,10 +9963,8 @@ class MDToolBoxApp(QMainWindow):
     def handle_sync_filter_result(self, id_list):
         self.select_tab("t2_find")
         tab2 = self.tabs["t2_find"]
-        # 直接完美覆寫回第二頁
-        tab2.t2_text.setPlainText("\n".join(id_list))
-        # 觸發一次正規化補名，讓它整齊漂亮！
-        tab2.norm_txt()
+        # ✨ 呼叫專屬篩選套用方法，完整保留卡片的自訂備註
+        tab2.apply_visual_filter_result(id_list)
 
     def select_tab(self, tid):
         if tid not in self.tabs: return
