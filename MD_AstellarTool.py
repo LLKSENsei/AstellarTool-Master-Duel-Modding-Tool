@@ -4603,7 +4603,7 @@ class MDEngine:
                         MDEngine.safe_copy_file(modded_file, target_file_path) # 🛡️ 套用原子化覆寫
                         
                     # --- 核心歷史紀錄同步寫入 (防孤島化) ---
-                    if is_data_unity3d:
+                    if file_name.lower() == "data.unity3d":
                         workspace_dir = os.path.join(MDEngine.TEMP_DIR, "data_unity3d_workspace")
                         os.makedirs(workspace_dir, exist_ok=True)
                         manifest_path = os.path.join(workspace_dir, "data_mod_manifest.json")
